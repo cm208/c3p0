@@ -1,0 +1,117 @@
+{% extends "guild_base.html" %}
+{% block title %}Welcome - C3P0 Dashboard{% endblock %}
+{% block guild_content %}
+<span class="eyebrow">Member Intake</span>
+<h1>Welcome</h1>
+
+<form method="post" action="/guilds/{{ guild_id }}/welcome" class="panel-form hud-frame">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+    <fieldset>
+        <legend>Master Switch</legend>
+        <div class="field-toggle">
+            <input type="checkbox" id="enabled" name="enabled" {% if config.enabled %}checked{% endif %}>
+            <label for="enabled">Enable welcome handling</label>
+        </div>
+        <p class="field-hint">Everything below only runs when this is on.</p>
+    </fieldset>
+
+    <fieldset>
+        <legend>Channel Message</legend>
+        <div class="field">
+            <label for="channel_id">Welcome channel</label>
+            <select id="channel_id" name="channel_id">
+                <option value="">Not set</option>
+                {% set text_channel_ids = text_channels | map(attribute="id") | list %}
+                {% if config.channel_id and config.channel_id not in text_channel_ids %}
+                <option value="{{ config.channel_id }}" selected>
+                    Currently set to {{ config.channel_id }} (channel not found)
+                </option>
+                {% endif %}
+                {% for channel in text_channels %}
+                <option value="{{ channel.id }}" {% if config.channel_id == channel.id %}selected{% endif %}>#{{ channel.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field-toggle">
+            <input type="checkbox" id="message_enabled" name="message_enabled" {% if config.message_enabled %}checked{% endif %}>
+            <label for="message_enabled">Post a message in the welcome channel</label>
+        </div>
+        <div class="field">
+            <label for="message_template">Message template</label>
+            <textarea id="message_template" name="message_template" maxlength="2000">{{ config.message_template or "" }}</textarea>
+            <p class="field-hint">Variables: {user}, {user_mention}, {user_id}, {server}, {member_count}, {channel}, {channel_mention}. Leave blank to keep the current template (or the built-in default if none has been set).</p>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Embed</legend>
+        <div class="field-toggle">
+            <input type="checkbox" id="embed_enabled" name="embed_enabled" {% if config.embed_enabled %}checked{% endif %}>
+            <label for="embed_enabled">Send the channel message as an embed</label>
+        </div>
+        <div class="field">
+            <label for="embed_title">Embed title</label>
+            <input type="text" id="embed_title" name="embed_title" value="{{ config.embed_title or '' }}" maxlength="256">
+        </div>
+        <div class="field">
+            <label for="embed_description">Embed description</label>
+            <textarea id="embed_description" name="embed_description" maxlength="4096">{{ config.embed_description or "" }}</textarea>
+            <p class="field-hint">Falls back to the message template above when left blank.</p>
+        </div>
+        <div class="field">
+            <label for="embed_footer">Embed footer</label>
+            <input type="text" id="embed_footer" name="embed_footer" value="{{ config.embed_footer or '' }}" maxlength="2048">
+        </div>
+        <p class="field-hint">Leave an embed field blank to clear it.</p>
+    </fieldset>
+
+    <fieldset>
+        <legend>Direct Message</legend>
+        <div class="field-toggle">
+            <input type="checkbox" id="dm_enabled" name="dm_enabled" {% if config.dm_enabled %}checked{% endif %}>
+            <label for="dm_enabled">DM new members</label>
+        </div>
+        <div class="field">
+            <label for="dm_template">DM template</label>
+            <textarea id="dm_template" name="dm_template" maxlength="2000">{{ config.dm_template or "" }}</textarea>
+            <p class="field-hint">Same variables as the channel message. Leave blank to keep the current template (or the built-in default if none has been set).</p>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Auto-Role</legend>
+        <div class="field-toggle">
+            <input type="checkbox" id="role_enabled" name="role_enabled" {% if config.role_enabled %}checked{% endif %}>
+            <label for="role_enabled">Assign a role on join</label>
+        </div>
+        <div class="field">
+            <label for="role_id">Role to grant</label>
+            <select id="role_id" name="role_id">
+                <option value="">Not set</option>
+                {% set assignable_role_ids = assignable_roles | map(attribute="id") | list %}
+                {% if config.role_id and config.role_id not in assignable_role_ids %}
+                <option value="{{ config.role_id }}" selected>
+                    Currently set to {{ config.role_id }} (not assignable right now - above C3P0's role, or no longer exists)
+                </option>
+                {% endif %}
+                {% for role in assignable_roles %}
+                <option value="{{ role.id }}" {% if config.role_id == role.id %}selected{% endif %}>{{ role.name }}</option>
+                {% endfor %}
+            </select>
+            <p class="field-hint">Only roles below C3P0's own highest role are shown.</p>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Join Log</legend>
+        <div class="field-toggle">
+            <input type="checkbox" id="join_log_enabled" name="join_log_enabled" {% if config.join_log_enabled %}checked{% endif %}>
+            <label for="join_log_enabled">Log joins to the server's log channel</label>
+        </div>
+        <p class="field-hint">Requires a log channel to be set on the <a href="/guilds/{{ guild_id }}/general">General</a> page first.</p>
+    </fieldset>
+
+    <button type="submit">Apply</button>
+</form>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "guild_base.html" %}
+{% block title %}General - C3P0 Dashboard{% endblock %}
+{% block guild_content %}
+<span class="eyebrow">Core Parameters</span>
+<h1>General</h1>
+
+<form method="post" action="/guilds/{{ guild_id }}/general" class="panel-form hud-frame">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+    <div class="field">
+        <label for="prefix">Command prefix</label>
+        <input type="text" id="prefix" name="prefix" value="{{ config.prefix }}" maxlength="10" required>
+        <p class="field-hint">Used for text commands like <code>{{ config.prefix }}kick</code>.</p>
+    </div>
+
+    <div class="field">
+        <label for="default_role_id">Default role</label>
+        <select id="default_role_id" name="default_role_id">
+            <option value="">Not set</option>
+            {% set assignable_role_ids = assignable_roles | map(attribute="id") | list %}
+            {% if config.default_role_id and config.default_role_id not in assignable_role_ids %}
+            <option value="{{ config.default_role_id }}" selected>
+                Currently set to {{ config.default_role_id }} (not assignable right now - above C3P0's role, or no longer exists)
+            </option>
+            {% endif %}
+            {% for role in assignable_roles %}
+            <option value="{{ role.id }}" {% if config.default_role_id == role.id %}selected{% endif %}>{{ role.name }}</option>
+            {% endfor %}
+        </select>
+        <p class="field-hint">Automatically assigned to new members when they join. Only roles below C3P0's own highest role are shown.</p>
+    </div>
+
+    <div class="field">
+        <label for="log_channel_id">Log channel</label>
+        <select id="log_channel_id" name="log_channel_id">
+            <option value="">Not set</option>
+            {% set text_channel_ids = text_channels | map(attribute="id") | list %}
+            {% if config.log_channel_id and config.log_channel_id not in text_channel_ids %}
+            <option value="{{ config.log_channel_id }}" selected>
+                Currently set to {{ config.log_channel_id }} (channel not found)
+            </option>
+            {% endif %}
+            {% for channel in text_channels %}
+            <option value="{{ channel.id }}" {% if config.log_channel_id == channel.id %}selected{% endif %}>#{{ channel.name }}</option>
+            {% endfor %}
+        </select>
+        <p class="field-hint">General bot activity (member joins/leaves, etc.) is logged here.</p>
+    </div>
+
+    <button type="submit">Apply</button>
+</form>
+{% endblock %}

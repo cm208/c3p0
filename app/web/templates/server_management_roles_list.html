@@ -1,0 +1,66 @@
+{% extends "server_management_base.html" %}
+{% block title %}Roles - Server Management - C3P0 Dashboard{% endblock %}
+{% block sm_title %}Roles{% endblock %}
+{% block sm_content %}
+<div class="stat-row">
+    <div class="stat-tile hud-frame">
+        <span class="stat-value">{{ (fixed_roles | length) + (editable_roles | length) }}</span>
+        <span class="stat-label">Roles</span>
+    </div>
+</div>
+
+<div class="role-type-links">
+    <a class="button" href="/guilds/{{ guild_id }}/server-management/roles/new">+ New Role</a>
+</div>
+
+<span class="eyebrow">Above C3P0 (Not Editable)</span>
+<p class="field-hint">C3P0 can't reorder, edit, or delete a managed role or anything at or above its own highest role.</p>
+<ul class="item-list">
+    {% for role in fixed_roles %}
+    <li class="item-row hud-frame is-locked">
+        <div class="item-main">
+            <span class="item-title">{{ role.name }}</span>
+            <span class="item-meta">
+                <span class="system-id">POS-{{ role.position }}</span>
+                {% if role.hoist %}&middot; hoisted{% endif %}
+                {% if role.mentionable %}&middot; mentionable{% endif %}
+            </span>
+        </div>
+        <div class="item-actions">
+            {% if role.managed %}
+            <span class="badge off">Managed</span>
+            {% else %}
+            <span class="badge off">Above C3P0</span>
+            {% endif %}
+        </div>
+    </li>
+    {% else %}
+    <li class="empty-state">Nothing above C3P0's own role.</li>
+    {% endfor %}
+</ul>
+
+<span class="eyebrow">Below C3P0 (Drag to Reorder)</span>
+{% if editable_roles %}
+<div class="canvas-toolbar hud-frame">
+    <span class="canvas-status" id="role-canvas-status">No unsaved changes.</span>
+    <div class="canvas-toolbar-actions">
+        <button type="button" class="secondary" id="role-canvas-discard">Discard Draft</button>
+        <button type="button" id="role-canvas-apply-button">Apply</button>
+    </div>
+</div>
+
+<ul class="item-list" id="role-canvas-list" data-guild-id="{{ guild_id }}" data-csrf-token="{{ session.csrf_token }}"></ul>
+
+<form id="role-canvas-apply-form" method="post" action="/guilds/{{ guild_id }}/server-management/roles/reorder" style="display: none;">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <input type="hidden" name="order" id="role-canvas-order-field">
+</form>
+<script type="application/json" id="role-canvas-initial-roles">{{ editable_roles_json | tojson }}</script>
+{% else %}
+<ul class="item-list">
+    <li class="empty-state">No editable roles below C3P0.</li>
+</ul>
+{% endif %}
+<script src="/static/confirm.js?v={{ asset_version }}" defer></script>
+<script src="/static/role_canvas.js?v={{ asset_version }}" defer></script>
+{% endblock %}

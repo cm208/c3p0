@@ -1,0 +1,70 @@
+{% extends "server_management_base.html" %}
+{% block title %}{{ template.name }} - Server Management - C3P0 Dashboard{% endblock %}
+{% block sm_title %}Preview: {{ template.name }}{% endblock %}
+{% block sm_content %}
+<p class="field-hint">{{ template.description or "No description." }}</p>
+
+<div class="callout danger">
+    Applying this template permanently deletes every existing channel and category in this server, then creates the roles and channels listed below. Roles are never touched by the wipe - they're only created if a same-named role doesn't already exist.
+</div>
+
+<span class="eyebrow">Roles ({{ role_rows | length }})</span>
+<ul class="item-list">
+    {% for role in role_rows %}
+    <li class="item-row hud-frame">
+        <div class="item-main">
+            <span class="item-title">{{ role.name }}</span>
+            <span class="item-meta">
+                {% if role.hoist %}<span class="badge off">Hoisted</span>{% endif %}
+                {% if role.mentionable %}<span class="badge off">Mentionable</span>{% endif %}
+                {{ role.permissions | join(", ") if role.permissions else "No special permissions." }}
+            </span>
+        </div>
+    </li>
+    {% else %}
+    <li class="empty-state">This template defines no roles.</li>
+    {% endfor %}
+</ul>
+
+<span class="eyebrow">Channels ({{ template.definition.channels | length }})</span>
+{% for group in groups %}
+<span class="eyebrow">{{ group.category.name if group.category else "No Category" }}</span>
+<ul class="item-list">
+    {% for channel in group.channels %}
+    <li class="item-row hud-frame">
+        <div class="item-main">
+            <span class="item-title">
+                {% if channel.type == 2 %}&#128266;{% else %}#{% endif %}{{ channel.name }}
+            </span>
+            <span class="item-meta">
+                {% if channel.overwrites %}<span class="badge partial">{{ channel.overwrites | length }} overwrite{{ "s" if channel.overwrites | length != 1 else "" }}</span>{% endif %}
+                {% if channel.topic %}&middot; {{ channel.topic }}{% endif %}
+            </span>
+        </div>
+    </li>
+    {% else %}
+    <li class="empty-state">No channels here.</li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="empty-state">This template defines no channels.</p>
+{% endfor %}
+
+<div class="item-actions">
+    {% if template.is_builtin %}
+    <form method="post" action="/guilds/{{ guild_id }}/server-management/templates/builtin/{{ template.slug }}/apply"
+          data-confirm="Apply &quot;{{ template.name }}&quot;? This will PERMANENTLY DELETE every channel and category in this server, then create this template's roles and channels. This cannot be undone.">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit">Apply</button>
+    </form>
+    {% else %}
+    <form method="post" action="/guilds/{{ guild_id }}/server-management/templates/{{ template.id }}/apply"
+          data-confirm="Apply &quot;{{ template.name }}&quot;? This will PERMANENTLY DELETE every channel and category in this server, then create this template's roles and channels. This cannot be undone.">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <button type="submit">Apply</button>
+    </form>
+    {% endif %}
+    <a class="button secondary" href="/guilds/{{ guild_id }}/server-management/templates">Back to Templates</a>
+</div>
+<script src="/static/confirm.js?v={{ asset_version }}" defer></script>
+{% endblock %}

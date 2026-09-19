@@ -1,0 +1,92 @@
+{% extends "guild_base.html" %}
+{% block title %}{{ command.trigger }} - C3P0 Dashboard{% endblock %}
+{% block guild_content %}
+<span class="eyebrow">Command Registry</span>
+<h1>{{ command.trigger }}</h1>
+<p class="field-hint">{{ command.name }}. Trigger and name can't be changed here - delete and recreate the command to rename it.</p>
+
+<form method="post" action="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}" class="panel-form hud-frame">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+    <div class="field-toggle">
+        <input type="checkbox" id="enabled" name="enabled" {% if command.enabled %}checked{% endif %}>
+        <label for="enabled">Enabled</label>
+    </div>
+
+    <div class="field">
+        <label for="response">Response</label>
+        <textarea id="response" name="response" maxlength="2000" required>{{ command.response }}</textarea>
+        <p class="field-hint">Variables: {user}, {user_mention}, {user_id}, {server}, {member_count}.</p>
+    </div>
+
+    <div class="field-toggle">
+        <input type="checkbox" id="embed_enabled" name="embed_enabled" {% if command.embed_enabled %}checked{% endif %}>
+        <label for="embed_enabled">Send response as an embed</label>
+    </div>
+
+    <div class="field-toggle">
+        <input type="checkbox" id="usage_logging_enabled" name="usage_logging_enabled" {% if command.usage_logging_enabled %}checked{% endif %}>
+        <label for="usage_logging_enabled">Log each use</label>
+    </div>
+
+    <fieldset>
+        <legend>Restriction</legend>
+        <div class="field">
+            <label for="restriction_type">Who can use this</label>
+            <select id="restriction_type" name="restriction_type">
+                <option value="public" {% if command.restriction_type == "public" %}selected{% endif %}>Everyone</option>
+                <option value="role" {% if command.restriction_type == "role" %}selected{% endif %}>Specific role</option>
+                <option value="permission" {% if command.restriction_type == "permission" %}selected{% endif %}>Specific permission</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="restricted_role_id">Role (if restricted to a role)</label>
+            <select id="restricted_role_id" name="restricted_role_id">
+                <option value="">Not set</option>
+                {% set all_role_ids = all_roles | map(attribute="id") | list %}
+                {% if command.restricted_role_id and command.restricted_role_id not in all_role_ids %}
+                <option value="{{ command.restricted_role_id }}" selected>
+                    Currently set to {{ command.restricted_role_id }} (role no longer exists)
+                </option>
+                {% endif %}
+                {% for role in all_roles %}
+                <option value="{{ role.id }}" {% if command.restricted_role_id == role.id %}selected{% endif %}>{{ role.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="restricted_permission">Permission (if restricted to a permission)</label>
+            <select id="restricted_permission" name="restricted_permission">
+                <option value="">Not set</option>
+                {% for perm in permission_choices %}
+                <option value="{{ perm }}" {% if command.restricted_permission == perm %}selected{% endif %}>{{ perm }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Cooldown</legend>
+        <div class="field">
+            <label for="cooldown_type">Cooldown type</label>
+            <select id="cooldown_type" name="cooldown_type">
+                <option value="none" {% if command.cooldown_type == "none" %}selected{% endif %}>None</option>
+                <option value="user" {% if command.cooldown_type == "user" %}selected{% endif %}>Per user</option>
+                <option value="guild" {% if command.cooldown_type == "guild" %}selected{% endif %}>Per server</option>
+            </select>
+        </div>
+        <div class="field">
+            <label for="cooldown_seconds">Cooldown seconds</label>
+            <input type="number" id="cooldown_seconds" name="cooldown_seconds" value="{{ command.cooldown_seconds }}" min="0">
+        </div>
+    </fieldset>
+
+    <button type="submit">Apply</button>
+</form>
+
+<form method="post" action="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}/delete" class="panel-form hud-frame">
+    <p class="field-hint">Permanently deletes this command. This can't be undone.</p>
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <button type="submit" class="danger">Delete command</button>
+</form>
+{% endblock %}

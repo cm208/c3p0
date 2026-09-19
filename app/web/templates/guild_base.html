@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body_class %}has-sidebar{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+    <nav class="sidebar">
+        <a class="back-link" href="/">&larr; Your servers</a>
+        <span class="guild-name">{{ guild_name or "Unknown server" }}</span>
+        <span class="system-id">GUILD-{{ guild_id }}</span>
+        <ul>
+            <li><a href="/guilds/{{ guild_id }}/general" class="{% if active_nav == 'general' %}active{% endif %}">General</a></li>
+            <li><a href="/guilds/{{ guild_id }}/welcome" class="{% if active_nav == 'welcome' %}active{% endif %}">Welcome</a></li>
+            <li><a href="/guilds/{{ guild_id }}/roles" class="{% if active_nav == 'roles' %}active{% endif %}">Reaction Roles</a></li>
+            <li><a href="/guilds/{{ guild_id }}/moderation" class="{% if active_nav == 'moderation' %}active{% endif %}">Moderation</a></li>
+            <li><a href="/guilds/{{ guild_id }}/custom-commands" class="{% if active_nav == 'custom-commands' %}active{% endif %}">Custom Commands</a></li>
+            <li><a href="/guilds/{{ guild_id }}/music" class="{% if active_nav == 'music' %}active{% endif %}">Music</a></li>
+            <li><a href="/guilds/{{ guild_id }}/server-management/roles" class="{% if active_nav == 'server-management' %}active{% endif %}">Server Management</a></li>
+        </ul>
+    </nav>
+    <div class="dashboard-content">
+        {% if error %}
+        <p class="callout danger">{{ error }}</p>
+        {% endif %}
+        {% block guild_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}

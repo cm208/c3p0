@@ -1,0 +1,14 @@
+{% extends "guild_base.html" %}
+{% block guild_content %}
+<span class="eyebrow">Server Management</span>
+<h1>{% block sm_title %}Server Management{% endblock %}</h1>
+
+<div class="role-type-links">
+    <a href="/guilds/{{ guild_id }}/server-management/roles" class="button {% if active_subtab == 'roles' %}secondary{% endif %}">Roles</a>
+    <a href="/guilds/{{ guild_id }}/server-management/channels" class="button {% if active_subtab == 'channels' %}secondary{% endif %}">Channels</a>
+    <a href="/guilds/{{ guild_id }}/server-management/templates" class="button {% if active_subtab == 'templates' %}secondary{% endif %}">Templates</a>
+    <a href="/guilds/{{ guild_id }}/server-management/audit-log" class="button {% if active_subtab == 'audit-log' %}secondary{% endif %}">Audit Log</a>
+</div>
+
+{% block sm_content %}{% endblock %}
+{% endblock %}

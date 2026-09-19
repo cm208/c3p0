@@ -1,0 +1,73 @@
+services:
+  c3p0:
+    # Prebuilt multi-arch image (amd64 + arm64) published to GHCR on each
+    # release. `docker compose pull` fetches it; `docker compose up -d --build`
+    # builds from source instead and tags the result the same way.
+    image: ghcr.io/cm208/c3p0:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: c3p0
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # A named volume (not a ./data bind mount) on purpose: the container
+      # runs as a non-root user, and Docker initializes a new named volume
+      # with the image's own /data ownership, so the database is writable
+      # out of the box. A bind mount to a directory you created yourself is
+      # owned by *you* and fails with "unable to open database file" unless
+      # you `chown 999:999` it first. See docs/deployment.md for backups.
+      - c3p0-data:/data
+    ports:
+      # Prometheus metrics, localhost only. To scrape from another host,
+      # change to "8000:8000"; from another container on this Compose
+      # network, drop this line and scrape http://c3p0:8000/metrics.
+      - "127.0.0.1:8000:8000"
+      # Deliberately NOT publishing 8100 (the internal music control-plane
+      # API). c3p0-web reaches it at http://c3p0:8100 over this Compose
+      # network's own service-name DNS - publishing it would needlessly
+      # expose a bearer-token-authenticated control surface to the host.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    # Deliberately no privileged mode, no host networking, no Docker
+    # socket mount.
+
+  c3p0-web:
+    image: ghcr.io/cm208/c3p0:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: c3p0-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    entrypoint: ["python", "-m", "app.web"]
+    volumes:
+      - c3p0-data:/data
+    ports:
+      # Dashboard, localhost only: put a reverse proxy or tunnel on this
+      # host in front of it (Discord login needs HTTPS, see the README).
+      # If your proxy/tunnel runs on another machine or a different Docker
+      # network, change to "8180:8080" (all interfaces) and firewall it.
+      # Pick a different host-side port if 8180 is taken; the container's
+      # own port (right-hand side) stays 8080, which is WEB_PORT.
+      - "127.0.0.1:8180:8080"
+    depends_on:
+      c3p0:
+        # Only the bot process runs migrations - waiting for it to report
+        # healthy guarantees they've already run before this starts.
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  c3p0-data:

@@ -1,0 +1,23 @@
+{% extends "server_management_base.html" %}
+{% block title %}Audit Log - Server Management - C3P0 Dashboard{% endblock %}
+{% block sm_title %}Audit Log{% endblock %}
+{% block sm_content %}
+<ul class="console-log hud-frame">
+    {% for entry in entries %}
+    <li>
+        <span class="log-time">{{ entry.created_at.strftime("%H:%M") }}</span>
+        <span class="log-type">{{ entry.action.value }}</span>
+        <span class="log-detail">
+            <span class="system-id">{{ entry.target_type.value | upper }}-{{ entry.target_id }}</span>
+            {{ entry.target_name }} &middot; by {{ entry.actor_discord_user_id }}
+        </span>
+        <span class="log-meta">{{ entry.created_at.strftime("%Y-%m-%d") }} &middot; {{ entry.summary }}</span>
+    </li>
+    {% else %}
+    <li class="empty-state">No server-management activity logged yet.</li>
+    {% endfor %}
+</ul>
+{% if has_more %}
+<a class="button secondary" href="/guilds/{{ guild_id }}/server-management/audit-log?offset={{ next_offset }}">Load older</a>
+{% endif %}
+{% endblock %}

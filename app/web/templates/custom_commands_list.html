@@ -1,0 +1,66 @@
+{% extends "guild_base.html" %}
+{% block title %}Custom Commands - C3P0 Dashboard{% endblock %}
+{% block guild_content %}
+<span class="eyebrow">Command Registry</span>
+<h1>Custom Commands</h1>
+
+{% if commands %}
+<div class="stat-row">
+    <div class="stat-tile hud-frame">
+        <span class="stat-value">{{ commands | length }}</span>
+        <span class="stat-label">Total Commands</span>
+    </div>
+    <div class="stat-tile hud-frame">
+        <span class="stat-value">{{ commands | selectattr("enabled") | list | length }}</span>
+        <span class="stat-label">Enabled</span>
+    </div>
+</div>
+{% endif %}
+
+<ul class="item-list">
+    {% for command in commands %}
+    <li class="item-row hud-frame">
+        <div class="item-main">
+            <a class="item-title" href="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}">{{ command.trigger }}</a>
+            <span class="item-meta">
+                {{ command.name }} &middot; {{ command.restriction_type }}{% if command.cooldown_type != "none" %} &middot; {{ command.cooldown_seconds }}s cooldown{% endif %}
+            </span>
+        </div>
+        <div class="item-actions">
+            <span class="badge {% if command.enabled %}on{% else %}off{% endif %}">{{ "ON" if command.enabled else "OFF" }}</span>
+            <a class="button secondary" href="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}">Edit</a>
+            <form method="post" action="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                <button type="submit" class="danger">Delete</button>
+            </form>
+        </div>
+    </li>
+    {% else %}
+    <li class="empty-state">No custom commands yet - add one below.</li>
+    {% endfor %}
+</ul>
+
+<span class="eyebrow">New Command</span>
+<form method="post" action="/guilds/{{ guild_id }}/custom-commands" class="panel-form hud-frame">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+    <div class="field">
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" value="{{ form_name or '' }}" maxlength="64" required>
+    </div>
+
+    <div class="field">
+        <label for="trigger">Trigger</label>
+        <input type="text" id="trigger" name="trigger" value="{{ form_trigger or '' }}" maxlength="80" required>
+        <p class="field-hint">Include the prefix, e.g. <code>!rules</code>. No spaces.</p>
+    </div>
+
+    <div class="field">
+        <label for="response">Response</label>
+        <textarea id="response" name="response" maxlength="2000" required>{{ form_response or "" }}</textarea>
+        <p class="field-hint">Variables: {user}, {user_mention}, {user_id}, {server}, {member_count}.</p>
+    </div>
+
+    <button type="submit">Create</button>
+</form>
+{% endblock %}

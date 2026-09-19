@@ -1,0 +1,8 @@
+# Allowlist: only what the Dockerfile COPYs ever enters the build context,
+# so a local .env, .venv, .git history, or data/ can't leak into an image.
+*
+!pyproject.toml
+!alembic.ini
+!app
+**/__pycache__
+**/*.pyc

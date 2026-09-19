@@ -1,0 +1,165 @@
+{% extends "guild_base.html" %}
+{% block title %}Music - C3P0 Dashboard{% endblock %}
+{% block guild_content %}
+<span class="eyebrow">Audio Systems</span>
+<h1>Music</h1>
+
+<div data-music-panel data-state-url="/guilds/{{ guild_id }}/music/state">
+
+<div class="stat-row">
+    <div class="stat-tile hud-frame">
+        <span class="stat-value" data-field="volume">{{ state.volume_percent }}%</span>
+        <span class="stat-label">Volume</span>
+    </div>
+    <div class="stat-tile hud-frame">
+        <span class="stat-value" data-field="queue-length">{{ state.queue | length }}</span>
+        <span class="stat-label">Queued</span>
+    </div>
+</div>
+
+<div class="hud-frame now-playing-panel" data-now-playing>
+    <span class="eyebrow">Now Playing</span>
+    {% if state.current %}
+    <p class="now-playing-title" data-field="title">{{ state.current.title }}</p>
+    <p class="item-meta" data-field="requested-by">Requested by {{ state.current.requested_by_name }}</p>
+    <div class="progress-track">
+        <div class="progress-fill" data-field="progress" style="width: {{ progress_percent(state.elapsed_seconds, state.current.duration_seconds) }}%;"></div>
+    </div>
+    <p class="progress-time">
+        <span data-field="elapsed">{{ state.elapsed_seconds | duration }}</span> / <span data-field="duration">{{ state.current.duration_seconds | duration }}</span>
+        <span class="badge {{ 'on' if state.playing else 'off' }}" data-field="status">
+            {%- if state.paused %}PAUSED{% elif state.playing %}PLAYING{% else %}STOPPED{% endif -%}
+        </span>
+    </p>
+    {% else %}
+    <p class="empty-state" data-field="empty">
+        {% if not state.connected %}Not playing anything - add a track below to start.{% else %}Queue is empty.{% endif %}
+    </p>
+    {% endif %}
+
+    <div class="transport-controls">
+        <form method="post" action="/guilds/{{ guild_id }}/music/player/pause">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit" class="secondary" data-action="pause" {% if not state.playing %}disabled{% endif %}>Pause</button>
+        </form>
+        <form method="post" action="/guilds/{{ guild_id }}/music/player/resume">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit" class="secondary" data-action="resume" {% if not state.paused %}disabled{% endif %}>Resume</button>
+        </form>
+        <form method="post" action="/guilds/{{ guild_id }}/music/player/skip">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit" class="secondary" data-action="skip" {% if not (state.playing or state.paused) %}disabled{% endif %}>Skip</button>
+        </form>
+    </div>
+
+    <form method="post" action="/guilds/{{ guild_id }}/music/player/volume" class="volume-form">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <label for="percent">Volume</label>
+        <input type="number" id="percent" name="percent" min="0" max="100" value="{{ state.volume_percent }}">
+        <button type="submit" class="secondary">Set</button>
+    </form>
+</div>
+
+<span class="eyebrow">Queue</span>
+<ul class="item-list" data-queue-list>
+    {% for track in state.queue %}
+    <li class="item-row hud-frame">
+        <div class="item-main">
+            <span class="item-title">{{ track.title }}</span>
+            <span class="item-meta">{{ track.duration_seconds | duration }} &middot; Requested by {{ track.requested_by_name }}</span>
+        </div>
+        <div class="item-actions">
+            <form method="post" action="/guilds/{{ guild_id }}/music/queue/{{ loop.index0 }}/remove">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                <button type="submit" class="danger">Remove</button>
+            </form>
+        </div>
+    </li>
+    {% else %}
+    <li class="empty-state">Nothing queued.</li>
+    {% endfor %}
+</ul>
+
+<span class="eyebrow">Add to Queue</span>
+<form method="post" action="/guilds/{{ guild_id }}/music/queue/add" class="panel-form hud-frame">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <div class="field">
+        <label for="query">Song name or URL</label>
+        <input type="text" id="query" name="query" required placeholder="Never Gonna Give You Up">
+    </div>
+    {% if not state.connected %}
+    <div class="field">
+        <label for="voice_channel_id">Voice channel</label>
+        <select id="voice_channel_id" name="voice_channel_id" required>
+            <option value="">Select a channel&hellip;</option>
+            {% for channel in voice_channels %}
+            <option value="{{ channel.id }}">{{ channel.name }}</option>
+            {% endfor %}
+        </select>
+        <p class="field-hint">Not connected to a voice channel yet - choose one to start playback.</p>
+    </div>
+    {% endif %}
+    <button type="submit">Add</button>
+</form>
+
+</div>
+
+<script src="/static/music.js?v={{ asset_version }}" defer></script>
+
+<span class="eyebrow">Configuration</span>
+<form method="post" action="/guilds/{{ guild_id }}/music" class="panel-form hud-frame">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+
+    <div class="field-toggle">
+        <input type="checkbox" id="enabled" name="enabled" {% if config.enabled %}checked{% endif %}>
+        <label for="enabled">Enable music commands</label>
+    </div>
+
+    <div class="field">
+        <label for="default_volume">Default volume</label>
+        <input type="number" id="default_volume" name="default_volume" value="{{ config.default_volume }}" min="0" max="100" required>
+        <p class="field-hint">0-100. Applied to new sessions; doesn't affect a session already playing.</p>
+    </div>
+
+    <div class="field">
+        <label for="max_queue_size">Max queue size</label>
+        <input type="number" id="max_queue_size" name="max_queue_size" value="{{ config.max_queue_size }}" min="1" max="1000" required>
+    </div>
+
+    <div class="field">
+        <label for="dj_role_id">DJ role</label>
+        <select id="dj_role_id" name="dj_role_id">
+            <option value="">Not set (anyone can control playback)</option>
+            {% set all_role_ids = all_roles | map(attribute="id") | list %}
+            {% if config.dj_role_id and config.dj_role_id not in all_role_ids %}
+            <option value="{{ config.dj_role_id }}" selected>
+                Currently set to {{ config.dj_role_id }} (role no longer exists)
+            </option>
+            {% endif %}
+            {% for role in all_roles %}
+            <option value="{{ role.id }}" {% if config.dj_role_id == role.id %}selected{% endif %}>{{ role.name }}</option>
+            {% endfor %}
+        </select>
+        <p class="field-hint">Required to skip, stop, or manage the queue from Discord. Server managers - which includes anyone who can reach this dashboard - can always do this regardless of role.</p>
+    </div>
+
+    <div class="field">
+        <label for="music_channel_id">Music activity channel</label>
+        <select id="music_channel_id" name="music_channel_id">
+            <option value="">Not set (no announcement)</option>
+            {% set text_channel_ids = text_channels | map(attribute="id") | list %}
+            {% if config.music_channel_id and config.music_channel_id not in text_channel_ids %}
+            <option value="{{ config.music_channel_id }}" selected>
+                Currently set to {{ config.music_channel_id }} (channel not found)
+            </option>
+            {% endif %}
+            {% for channel in text_channels %}
+            <option value="{{ channel.id }}" {% if config.music_channel_id == channel.id %}selected{% endif %}>#{{ channel.name }}</option>
+            {% endfor %}
+        </select>
+        <p class="field-hint">When set, adding a track from this dashboard posts a short message here. A Discord !play already confirms in the channel it was typed in, so this only covers the dashboard.</p>
+    </div>
+
+    <button type="submit">Apply</button>
+</form>
+{% endblock %}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}C3P0 Dashboard{% endblock %}</title>
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#070402">
+    <!-- Paints the correct dark ground on the very first frame, before
+         style.css has even started downloading - otherwise the browser's
+         own white/light default background flashes during every
+         cross-page navigation (this is a full page reload, not an SPA),
+         which reads as a "gray screen" break between pages. -->
+    <style>html,body{background:#070402}</style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <header class="site-header">
+        <a class="brand" href="/">C3P0</a>
+        {% if session %}
+            <div class="status-bar">
+                <span class="status-pill">OPERATIONAL</span>
+                <span class="operator-tag">OPERATOR: <strong>{{ session.discord_username }}</strong></span>
+                <form action="/auth/logout" method="post" class="logout-form">
+                    <button type="submit">[ DISCONNECT ]</button>
+                </form>
+            </div>
+        {% endif %}
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

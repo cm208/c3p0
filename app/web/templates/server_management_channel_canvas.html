@@ -1,0 +1,40 @@
+{% extends "server_management_base.html" %}
+{% block title %}Channels - Server Management - C3P0 Dashboard{% endblock %}
+{% block sm_title %}Channels{% endblock %}
+{% block sm_content %}
+<p class="field-hint">
+    Drag to reorder or move between categories. Click a name to rename it. Right-click a channel or category for more
+    options. Nothing reaches Discord until you click Apply.
+</p>
+
+<div class="canvas-toolbar hud-frame">
+    <span class="canvas-status" id="canvas-status">No unsaved changes.</span>
+    <div class="canvas-toolbar-actions">
+        <button type="button" class="secondary" id="canvas-discard">Discard Draft</button>
+        <button type="button" id="canvas-apply-button">Apply</button>
+    </div>
+</div>
+
+<div id="canvas-root" class="canvas-list" data-everyone-role-id="{{ everyone_role_id }}"></div>
+
+<div class="canvas-add" id="canvas-root-add">
+    <button type="button" class="canvas-add-trigger" title="Add to server root">+</button>
+    <div class="canvas-add-options">
+        <button type="button" data-add-type="0">#&nbsp;Text</button>
+        <button type="button" data-add-type="2">&#128266;&nbsp;Voice</button>
+        <button type="button" data-add-type="4">&#128193;&nbsp;Category</button>
+    </div>
+</div>
+
+<form id="canvas-apply-form" method="post" action="{{ apply_url }}" style="display: none;">
+    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+    <input type="hidden" name="batch" id="canvas-batch-field">
+</form>
+
+<script type="application/json" id="canvas-initial-channels">{{ channels_json | tojson }}</script>
+<script type="application/json" id="canvas-initial-roles">{{ roles_json | tojson }}</script>
+<script type="application/json" id="canvas-overwrite-permissions">{{ overwrite_permissions | tojson }}</script>
+<script type="application/json" id="canvas-permission-bit-values">{{ permission_bit_values | tojson }}</script>
+<script type="application/json" id="canvas-operator-permissions">{{ operator_permissions | tojson }}</script>
+<script src="/static/channel_canvas.js?v={{ asset_version }}" defer></script>
+{% endblock %}

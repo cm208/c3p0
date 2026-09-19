@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Your servers - C3P0 Dashboard{% endblock %}
+{% block content %}
+<span class="eyebrow">Authorized Networks</span>
+<h1>Your servers</h1>
+{% if guilds %}
+    <ul class="guild-list">
+        {% for guild in guilds %}
+        <li class="guild-row hud-frame">
+            <span class="item-title">{{ guild.name or "Unnamed server (" ~ guild.id ~ ")" }}</span>
+            <a class="button" href="/guilds/{{ guild.id }}/general">Manage</a>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p class="empty-state">
+        No servers to show. This means either C3P0 isn't deployed on a server you manage,
+        or you don't hold Manage Server clearance on any server it's in.
+    </p>
+{% endif %}
+{% endblock %}
