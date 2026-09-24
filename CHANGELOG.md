@@ -2,6 +2,12 @@
 
 All notable changes are recorded here. This project follows [Semantic Versioning](https://semver.org/) from 1.3.0 onward.
 
+## [1.3.1] - 2026-09-24
+
+### Fixed
+
+- The bot crashed on startup in any freshly built image. SQLAlchemy 2.1 stopped installing `greenlet`, which the async database engine needs, and the old `SQLAlchemy>=2.0,<3.0` range let new builds pick up 2.1. The dependency is now `SQLAlchemy[asyncio]>=2.0,<2.1`.
+
 ## [1.3.0] - 2026-09-19
 
 First public release. It rolls up everything built before it, including the two earlier milestones that were tracked internally as 2.0 (server management) and 2.5 (channel canvas and infraction management); those numbers are retired and versioning starts fresh here.
