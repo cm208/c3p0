@@ -21,13 +21,42 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, Response
 
 from app.services.config_service import ConfigurationService
-from app.services.welcome_service import WelcomeService, WelcomeValidationError
+from app.services.welcome_service import (
+    DEFAULT_DM_TEMPLATE,
+    DEFAULT_MESSAGE_TEMPLATE,
+    WelcomeConfigView,
+    WelcomeService,
+    WelcomeValidationError,
+)
 from app.web.csrf import require_csrf
 from app.web.dependencies import require_guild_access
-from app.web.guild_options import guild_page_context, load_guild_discord_state, resolve_optional_id
+from app.web.guild_options import (
+    GuildDiscordState,
+    guild_page_context,
+    load_guild_discord_state,
+    resolve_optional_id,
+)
+from app.web.message_editor import build_editor_context
 from app.web.sessions import LoadedSession
 
 router = APIRouter()
+
+
+def _editor_context(
+    context: dict, state: GuildDiscordState, session: LoadedSession, config: WelcomeConfigView
+) -> dict:
+    """Message-editor extras for welcome.html. Previews {channel} as the
+    configured welcome channel, since that's where the message is posted."""
+    return {
+        "editor_context": build_editor_context(
+            state=state,
+            session=session,
+            guild_name=context["guild_name"],
+            sample_channel_id=config.channel_id,
+        ),
+        "default_message_template": DEFAULT_MESSAGE_TEMPLATE,
+        "default_dm_template": DEFAULT_DM_TEMPLATE,
+    }
 
 
 @router.get("/guilds/{guild_id}/welcome")
@@ -46,6 +75,7 @@ async def show_welcome(
             "config": config,
             "assignable_roles": state.assignable_roles,
             "text_channels": state.text_channels,
+            **_editor_context(context, state, session, config),
         }
     )
     return request.app.state.templates.TemplateResponse(request, "welcome.html", context)
@@ -88,6 +118,7 @@ async def update_welcome(
                 "assignable_roles": state.assignable_roles,
                 "text_channels": state.text_channels,
                 "error": error,
+                **_editor_context(context, state, session, config),
             }
         )
         return request.app.state.templates.TemplateResponse(

@@ -253,3 +253,16 @@ def test_cooldown_expires(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.services.custom_command_service.datetime", _FrozenFuture)
 
     assert service.check_cooldown(view, USER_A) is None
+
+
+async def test_increment_use_count_is_persisted_per_command(db_session: AsyncSession) -> None:
+    service = CustomCommandService()
+    view = await service.create(GUILD_A, name="Rules", trigger="!rules", response="Be nice.", created_by=1)
+    other = await service.create(GUILD_A, name="Ip", trigger="!ip", response="1.2.3.4", created_by=1)
+
+    await service.increment_use_count(view)
+    await service.increment_use_count(view)
+
+    assert (await service.get_by_trigger(GUILD_A, "!rules")).use_count == 2
+    assert (await service.get_by_trigger(GUILD_A, "!ip")).use_count == 0
+    assert other.use_count == 0

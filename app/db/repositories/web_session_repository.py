@@ -43,6 +43,9 @@ class WebSessionRepository(BaseRepository):
         )
         return result.scalar_one_or_none()
 
+    async def get(self, session_id: int) -> WebSession | None:
+        return await self.session.get(WebSession, session_id)
+
     async def touch(self, session_id: int, *, now: datetime) -> None:
         record = await self.session.get(WebSession, session_id)
         if record is not None:

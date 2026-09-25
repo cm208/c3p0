@@ -1,26 +1,48 @@
 {% extends "base.html" %}
-{% block body_class %}has-sidebar{% endblock %}
+{#- Every guild page: nav (F-keys) | main | SYSLOG. The F-key map here is
+    the single source for both the nav and console.js's shortcuts (read
+    from data-fkey), so adding a page means adding one entry below. -#}
+{% set guild_nav = [
+    ("F1", "general", "General", "/guilds/" ~ guild_id ~ "/general"),
+    ("F2", "server-management", "Server", "/guilds/" ~ guild_id ~ "/server-management/channels"),
+    ("F3", "music", "Music", "/guilds/" ~ guild_id ~ "/music"),
+    ("F4", "moderation", "Mod Log", "/guilds/" ~ guild_id ~ "/moderation"),
+    ("F5", "custom-commands", "Commands", "/guilds/" ~ guild_id ~ "/custom-commands"),
+    ("F6", "welcome", "Welcome", "/guilds/" ~ guild_id ~ "/welcome"),
+    ("F7", "roles", "R.Roles", "/guilds/" ~ guild_id ~ "/roles"),
+] %}
 {% block content %}
-<div class="dashboard-layout">
-    <nav class="sidebar">
-        <a class="back-link" href="/">&larr; Your servers</a>
-        <span class="guild-name">{{ guild_name or "Unknown server" }}</span>
-        <span class="system-id">GUILD-{{ guild_id }}</span>
-        <ul>
-            <li><a href="/guilds/{{ guild_id }}/general" class="{% if active_nav == 'general' %}active{% endif %}">General</a></li>
-            <li><a href="/guilds/{{ guild_id }}/welcome" class="{% if active_nav == 'welcome' %}active{% endif %}">Welcome</a></li>
-            <li><a href="/guilds/{{ guild_id }}/roles" class="{% if active_nav == 'roles' %}active{% endif %}">Reaction Roles</a></li>
-            <li><a href="/guilds/{{ guild_id }}/moderation" class="{% if active_nav == 'moderation' %}active{% endif %}">Moderation</a></li>
-            <li><a href="/guilds/{{ guild_id }}/custom-commands" class="{% if active_nav == 'custom-commands' %}active{% endif %}">Custom Commands</a></li>
-            <li><a href="/guilds/{{ guild_id }}/music" class="{% if active_nav == 'music' %}active{% endif %}">Music</a></li>
-            <li><a href="/guilds/{{ guild_id }}/server-management/roles" class="{% if active_nav == 'server-management' %}active{% endif %}">Server Management</a></li>
-        </ul>
+<div class="guild-layout">
+    <nav class="nav" aria-label="Guild pages">
+        <div class="nav-card">
+            <span class="dim small">CONNECTED TO</span>
+            <span class="guild-name">{{ guild_name or "Unknown server" }}</span>
+            <span class="dim small">GUILD-{{ guild_id }}</span>
+        </div>
+        {% for key, nav_id, label, href in guild_nav %}
+        <a class="nav-item {% if active_nav == nav_id %}is-active{% endif %}" href="{{ href }}" data-fkey="{{ key }}"
+           {% if active_nav == nav_id %}aria-current="page"{% endif %}><span class="key">{{ key }}</span><span class="label">{{ label }}</span></a>
+        {% endfor %}
+        <div class="nav-foot">
+            <a href="/" data-fkey="F9"><span>F9</span><span class="label">Guilds</span></a>
+            <button type="submit" form="logout-form" data-fkey="F10"><span>F10</span><span class="label">Logout</span></button>
+        </div>
     </nav>
-    <div class="dashboard-content">
+
+    <div class="scroll" id="main-scroll">
         {% if error %}
-        <p class="callout danger">{{ error }}</p>
+        <p class="term-err" data-flash-error>{{ error }}</p>
         {% endif %}
         {% block guild_content %}{% endblock %}
     </div>
+
+    <section class="frame syslog" aria-label="Syslog">
+        <span class="frame-label">[ SYSLOG · LIVE ]</span>
+        <ul class="syslog-lines" id="syslog" aria-live="polite" data-events-url="/guilds/{{ guild_id }}/events"></ul>
+    </section>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/syslog.js?v={{ asset_version }}" defer></script>
+{% block page_scripts %}{% endblock %}
 {% endblock %}

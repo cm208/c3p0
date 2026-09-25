@@ -151,6 +151,24 @@ class SessionService:
                 guild_permissions={int(k): v for k, v in (cache or {}).items()},
             )
 
+    async def fetch_guild_summaries(
+        self, session: LoadedSession, *, http: httpx.AsyncClient
+    ) -> list[discord_client.DiscordUserGuild] | None:
+        """The operator's guilds with names and approximate member/online
+        counts, for the guild picker. Uses the access token load() already
+        kept fresh; returns None (callers fall back to names only) if
+        Discord refuses or rate-limits the call, rather than ending the
+        session the way a failed permissions refresh does."""
+        async with session_scope() as db:
+            record = await WebSessionRepository(db).get(session.id)
+            if record is None:
+                return None
+            access_token = record.access_token
+        try:
+            return await discord_client.fetch_user_guilds(http, access_token, with_counts=True)
+        except (discord_client.DiscordAPIError, httpx.HTTPError):
+            return None
+
     async def delete(self, raw_token: str | None) -> None:
         if not raw_token:
             return

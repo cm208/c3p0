@@ -169,6 +169,10 @@ async def test_get_new_role_form_renders_type_specific_fields(
     assert 'name="placeholder"' not in reaction_page.text
     assert 'name="placeholder"' in select_page.text
     assert 'name="emoji"' not in select_page.text
+    # The role message is posted literally (no {variable} rendering), so
+    # the editor is present but offers no variables.
+    assert "data-message-editor" in reaction_page.text
+    assert "data-variables" not in reaction_page.text
 
 
 async def test_post_create_reaction_role_full_sequence(

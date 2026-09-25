@@ -1,37 +1,38 @@
 {% extends "server_management_base.html" %}
-{% block title %}Apply Result - Server Management - C3P0 Dashboard{% endblock %}
-{% block sm_title %}Applied "{{ template_name }}"{% endblock %}
+{% block title %}Apply Result - Server - C3P0 Console{% endblock %}
+{% block sm_title %}APPLY LOG{% endblock %}
 {% block sm_content %}
 {% set created_count = results | selectattr("status", "equalto", "created") | list | length %}
 {% set deleted_count = results | selectattr("status", "equalto", "deleted") | list | length %}
+{% set failed_count = results | selectattr("status", "equalto", "failed") | list | length %}
+<h2>{{ template_name }}</h2>
+
 <div class="stat-row">
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ deleted_count }}</span>
-        <span class="stat-label">Deleted</span>
-    </div>
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ created_count }}</span>
-        <span class="stat-label">Created</span>
-    </div>
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ results | length }}</span>
-        <span class="stat-label">Total Items</span>
-    </div>
+    <div class="stat-tile"><span class="stat-label">[ DELETED ]</span><span class="stat-value">{{ deleted_count }}</span></div>
+    <div class="stat-tile"><span class="stat-label">[ CREATED ]</span><span class="stat-value">{{ created_count }}</span></div>
+    <div class="stat-tile"><span class="stat-label">[ FAILED ]</span><span class="stat-value">{{ failed_count }}</span></div>
+    <div class="stat-tile"><span class="stat-label">[ TOTAL ]</span><span class="stat-value">{{ results | length }}</span></div>
 </div>
 
-<ul class="item-list">
-    {% for item in results %}
-    <li class="item-row">
-        <div class="item-main">
-            <span class="item-title">{{ item.kind | capitalize }}: {{ item.name }}</span>
-            {% if item.detail %}<span class="item-meta">{{ item.detail }}</span>{% endif %}
-        </div>
-        <span class="badge {% if item.status == 'created' %}on{% elif item.status == 'deleted' %}off{% elif item.status == 'skipped_conflict' %}partial{% else %}danger{% endif %}">
-            {% if item.status == "created" %}Created{% elif item.status == "deleted" %}Deleted{% elif item.status == "skipped_conflict" %}Already Exists{% else %}Failed{% endif %}
-        </span>
-    </li>
-    {% endfor %}
-</ul>
+<section class="frame">
+    <span class="frame-label">[ {{ results | length }} ITEM{{ "S" if results | length != 1 else "" }} ]</span>
+    <ul class="item-list">
+        {% for item in results %}
+        <li class="item-row">
+            <div class="item-main">
+                <span>{{ item.kind | upper }} · {{ item.name }}</span>
+                {% if item.detail %}<span class="item-meta">{{ item.detail }}</span>{% endif %}
+            </div>
+            <span class="badge {% if item.status == 'failed' %}hard{% elif item.status == 'skipped_conflict' %}partial{% elif item.status == 'deleted' %}off{% endif %}">
+                {%- if item.status == "created" %}Created{% elif item.status == "deleted" %}Deleted{% elif item.status == "skipped_conflict" %}Already Exists{% else %}Failed{% endif -%}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
 
-<a class="button" href="/guilds/{{ guild_id }}/server-management/templates">Back to Templates</a>
+<div class="actions">
+    <a class="button" href="/guilds/{{ guild_id }}/server-management/channels">VIEW CHANNEL TREE</a>
+    <a class="button secondary" href="/guilds/{{ guild_id }}/server-management/templates">&#9668; TEMPLATES</a>
+</div>
 {% endblock %}

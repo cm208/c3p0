@@ -23,10 +23,12 @@ import discord
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
+from app.services.config_service import ConfigurationService
 from app.services.custom_command_service import CustomCommandService, CustomCommandValidationError
 from app.web.csrf import require_csrf
 from app.web.dependencies import require_guild_access
 from app.web.guild_options import guild_page_context, load_guild_discord_state, resolve_optional_id
+from app.web.message_editor import build_editor_context
 from app.web.sessions import LoadedSession
 
 router = APIRouter()
@@ -40,9 +42,14 @@ async def list_custom_commands(
     guild_id: int,
     session: LoadedSession = Depends(require_guild_access),
 ) -> Response:
-    commands_list = await CustomCommandService().list_for_guild(guild_id)
+    commands_list, state = await asyncio.gather(
+        CustomCommandService().list_for_guild(guild_id), load_guild_discord_state(request, guild_id)
+    )
     context = await guild_page_context(guild_id, session, "custom-commands")
     context["commands"] = commands_list
+    context["editor_context"] = build_editor_context(
+        state=state, session=session, guild_name=context["guild_name"]
+    )
     return request.app.state.templates.TemplateResponse(request, "custom_commands_list.html", context)
 
 
@@ -58,6 +65,16 @@ async def create_custom_command(
     trigger = str(form.get("trigger", ""))
     response_text = str(form.get("response", ""))
 
+    # The trigger is what users type, so it must carry the server's prefix;
+    # add it when the operator left it off ("rules" -> "!rules"). The name
+    # is only a label - default it to the trigger rather than making the
+    # operator type the same thing twice.
+    trigger = trigger.strip()
+    prefix = (await ConfigurationService().get_config(guild_id)).prefix
+    if trigger and not trigger.startswith(prefix):
+        trigger = prefix + trigger
+    name = name.strip() or trigger
+
     service = CustomCommandService()
     try:
         await service.create(
@@ -68,11 +85,16 @@ async def create_custom_command(
             created_by=session.discord_user_id,
         )
     except CustomCommandValidationError as exc:
-        commands_list = await service.list_for_guild(guild_id)
+        commands_list, state = await asyncio.gather(
+            service.list_for_guild(guild_id), load_guild_discord_state(request, guild_id)
+        )
         context = await guild_page_context(guild_id, session, "custom-commands")
         context.update(
             {
                 "commands": commands_list,
+                "editor_context": build_editor_context(
+                    state=state, session=session, guild_name=context["guild_name"]
+                ),
                 "error": str(exc),
                 "form_name": name,
                 "form_trigger": trigger,
@@ -105,6 +127,9 @@ async def show_custom_command(
             "command": command,
             "all_roles": state.all_roles,
             "permission_choices": PERMISSION_CHOICES,
+            "editor_context": build_editor_context(
+                state=state, session=session, guild_name=context["guild_name"]
+            ),
         }
     )
     return request.app.state.templates.TemplateResponse(request, "custom_command_edit.html", context)
@@ -145,6 +170,9 @@ async def update_custom_command(
                 "command": current,
                 "all_roles": state.all_roles,
                 "permission_choices": PERMISSION_CHOICES,
+                "editor_context": build_editor_context(
+                    state=state, session=session, guild_name=context["guild_name"]
+                ),
                 "error": error,
             }
         )

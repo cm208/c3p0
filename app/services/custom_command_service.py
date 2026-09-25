@@ -59,6 +59,7 @@ class CustomCommandView:
     cooldown_seconds: int
     usage_logging_enabled: bool
     created_by: int
+    use_count: int = 0
 
 
 def _to_view(command: CustomCommand) -> CustomCommandView:
@@ -77,6 +78,7 @@ def _to_view(command: CustomCommand) -> CustomCommandView:
         cooldown_seconds=command.cooldown_seconds,
         usage_logging_enabled=command.usage_logging_enabled,
         created_by=command.created_by,
+        use_count=command.use_count or 0,
     )
 
 
@@ -263,6 +265,10 @@ class CustomCommandService:
                 return None
             command = await repo.set_usage_logging(guild_id, existing.id, enabled)
             return _to_view(command) if command is not None else None
+
+    async def increment_use_count(self, view: CustomCommandView) -> None:
+        async with session_scope() as session:
+            await CustomCommandRepository(session).increment_use_count(view.guild_id, view.id)
 
     # --- Invocation-time helpers (no DB access - pure/in-memory) ---
 

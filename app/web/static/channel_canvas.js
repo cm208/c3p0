@@ -67,6 +67,25 @@
     var contextMenuEl = null;
     var modalBackdropEl = null;
     var hasChanges = false;
+    // The row shown in the [ SELECTED ] panel (a refKey), or null.
+    var selectedKey = null;
+
+    // Messages and confirmations go through the console (SYSLOG line /
+    // (y/N) prompt) when it's loaded, falling back to the browser's own.
+    function notify(tag, text) {
+        if (window.C3P0 && window.C3P0.print) {
+            window.C3P0.print(tag, text);
+        } else {
+            window.alert(text);
+        }
+    }
+
+    function ask(text) {
+        if (window.C3P0 && window.C3P0.confirm) {
+            return window.C3P0.confirm(text);
+        }
+        return Promise.resolve(window.confirm(text));
+    }
 
     function refKey(ref) {
         return ref.kind + ":" + ref.id;
@@ -206,14 +225,15 @@
     // --- Rendering ---
 
     function typeIcon(type) {
-        return type === VOICE_TYPE ? "🔊" : "#";
+        return type === VOICE_TYPE ? "<)" : "#";
     }
 
     function renderChannelRow(key, node) {
         var li = document.createElement("li");
-        li.className = "canvas-channel-row";
+        li.className = "canvas-channel-row" + (key === selectedKey ? " is-selected" : "");
         li.draggable = true;
         li.dataset.key = key;
+        li.addEventListener("click", function () { select(key); });
 
         var icon = document.createElement("span");
         icon.className = "canvas-type-icon";
@@ -224,11 +244,15 @@
         name.className = "canvas-name";
         name.textContent = node.name;
         name.tabIndex = 0;
-        name.addEventListener("click", function () { startRename(key, name); });
+        name.addEventListener("dblclick", function () { startRename(key, name); });
+        name.addEventListener("focus", function () { select(key); });
         name.addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
                 event.preventDefault();
                 startRename(key, name);
+            } else if (event.key === "Delete") {
+                event.preventDefault();
+                deleteNode(key);
             }
         });
         li.appendChild(name);
@@ -263,16 +287,21 @@
         name.className = "canvas-name";
         name.textContent = node.name;
         name.tabIndex = 0;
-        name.addEventListener("click", function (event) {
+        name.addEventListener("dblclick", function (event) {
             event.stopPropagation();
             startRename(key, name);
         });
+        name.addEventListener("focus", function () { select(key); });
         name.addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
                 event.preventDefault();
                 startRename(key, name);
+            } else if (event.key === "Delete") {
+                event.preventDefault();
+                deleteNode(key);
             }
         });
+        header.addEventListener("click", function () { select(key); });
         header.appendChild(name);
 
         addMenuTrigger(header, key);
@@ -309,7 +338,153 @@
             }
         });
         updateStatus();
+        updateSelectedPanel();
     }
+
+    // --- Selection + the [ SELECTED ] / [ NEW CHANNEL ] panels ---
+
+    function parentKeyOf(key) {
+        var node = state.nodesByKey[key];
+        return node && node.parentRef ? refKey(node.parentRef) : "";
+    }
+
+    function select(key) {
+        if (selectedKey === key) {
+            return;
+        }
+        selectedKey = key;
+        var rows = rootEl.querySelectorAll(".canvas-channel-row");
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].classList.toggle("is-selected", rows[i].dataset.key === key);
+        }
+        updateSelectedPanel();
+    }
+
+    // New channels land in the selected category, or the selected
+    // channel's category, else at the top level.
+    function newChannelParentKey() {
+        var node = selectedKey ? state.nodesByKey[selectedKey] : null;
+        if (!node || node.deleted) {
+            return "";
+        }
+        return node.type === CATEGORY_TYPE ? selectedKey : parentKeyOf(selectedKey);
+    }
+
+    function selPanel(name) {
+        return document.querySelector('[data-sel="' + name + '"]');
+    }
+
+    function updateSelectedPanel() {
+        var panel = document.getElementById("canvas-selected");
+        if (!panel) {
+            return;
+        }
+        var node = selectedKey ? state.nodesByKey[selectedKey] : null;
+        if (node && node.deleted) {
+            node = null;
+        }
+        if (!node) {
+            selectedKey = null;
+        }
+        var buttons = panel.querySelectorAll("[data-sel-action]");
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].disabled = !node;
+        }
+        if (!node) {
+            selPanel("name").textContent = "\u2014";
+            selPanel("meta").textContent = "CLICK A CHANNEL IN THE TREE";
+        } else if (node.type === CATEGORY_TYPE) {
+            var count = (state.childrenByParent[selectedKey] || []).length;
+            selPanel("name").textContent = "\u25BE " + node.name;
+            selPanel("meta").textContent = "CATEGORY \u00B7 " + count + " CHANNEL" + (count === 1 ? "" : "S");
+        } else {
+            var parentKey = parentKeyOf(selectedKey);
+            var where = parentKey ? "IN " + state.nodesByKey[parentKey].name.toUpperCase() : "TOP LEVEL";
+            selPanel("name").textContent = typeIcon(node.type) + " " + node.name;
+            selPanel("meta").textContent = (node.type === VOICE_TYPE ? "VOICE" : "TEXT") + " CHANNEL \u00B7 " + where
+                + (node.ref.kind === "temp" ? " \u00B7 NEW" : "");
+        }
+        var under = selPanel("created-under");
+        if (under) {
+            var target = newChannelParentKey();
+            under.textContent = "CREATED UNDER: " + (target ? state.nodesByKey[target].name.toUpperCase() : "(TOP LEVEL)");
+        }
+    }
+
+    (function wireSelectionPanels() {
+        var panel = document.getElementById("canvas-selected");
+        if (panel) {
+            panel.addEventListener("click", function (event) {
+                var button = event.target.closest("[data-sel-action]");
+                if (!button || !selectedKey) {
+                    return;
+                }
+                var action = button.dataset.selAction;
+                if (action === "rename") {
+                    var nameEl = rootEl.querySelector('[data-key="' + selectedKey + '"] .canvas-name');
+                    if (nameEl) {
+                        startRename(selectedKey, nameEl);
+                    }
+                } else if (action === "perms") {
+                    openPermissionsModal(selectedKey);
+                } else if (action === "delete") {
+                    deleteNode(selectedKey);
+                }
+            });
+        }
+
+        var newName = document.getElementById("canvas-new-name");
+        if (!newName) {
+            return;
+        }
+        // Discord's own channel-name rules: lowercase, spaces become dashes.
+        newName.addEventListener("input", function () {
+            var cleaned = newName.value.toLowerCase().replace(/\s+/g, "-");
+            if (cleaned !== newName.value) {
+                newName.value = cleaned;
+            }
+        });
+        function quickCreate(type) {
+            var name = newName.value.trim();
+            if (!name) {
+                newName.focus();
+                return;
+            }
+            var parentKey = newChannelParentKey();
+            var key = createChannelNode(type, name, parentKey, null, []);
+            newName.value = "";
+            selectedKey = key;
+            render();
+            notify("OK", (type === VOICE_TYPE ? "<) " : "#") + name + " staged "
+                + (parentKey ? "in " + state.nodesByKey[parentKey].name : "at top level") + " \u00B7 apply to send");
+        }
+        newName.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                quickCreate(TEXT_TYPE);
+            }
+        });
+        document.getElementById("canvas-new-text").addEventListener("click", function () { quickCreate(TEXT_TYPE); });
+        document.getElementById("canvas-new-voice").addEventListener("click", function () { quickCreate(VOICE_TYPE); });
+    })();
+
+    // `rm #name` from the console: the same draft delete as the menu.
+    window.C3P0 = window.C3P0 || {};
+    window.C3P0.canvas = {
+        removeByName: function (name) {
+            var wanted = name.toLowerCase();
+            var match = Object.keys(state.nodesByKey).filter(function (key) {
+                var node = state.nodesByKey[key];
+                return !node.deleted && node.name.toLowerCase() === wanted;
+            })[0];
+            if (!match) {
+                notify("ERR", "rm: #" + name + ": not found");
+                return;
+            }
+            select(match);
+            deleteNode(match);
+        },
+    };
 
     // --- Menu trigger (keyboard/touch-friendly alternative to right-click) ---
 
@@ -447,12 +622,19 @@
 
     function deleteNode(key) {
         var node = state.nodesByKey[key];
-        var confirmMessage = 'Remove "' + node.name + '" from the draft? This only changes the draft until you Apply'
-            + (node.type === CATEGORY_TYPE ? " - its channels move up to the top level, they aren't deleted too." : ".");
-        if (!window.confirm(confirmMessage)) {
-            return;
-        }
+        var label = node.type === CATEGORY_TYPE ? node.name : typeIcon(node.type) + (node.type === VOICE_TYPE ? " " : "") + node.name;
+        var confirmMessage = "rm " + label + " \u00B7 STAGED UNTIL [ APPLY ]"
+            + (node.type === CATEGORY_TYPE ? " \u00B7 ITS CHANNELS MOVE TO TOP LEVEL" : "") + ". PROCEED?";
+        ask(confirmMessage).then(function (yes) {
+            if (yes) {
+                removeNode(key);
+                notify("OK", label + " removed from draft \u00B7 apply to send");
+            }
+        });
+    }
 
+    function removeNode(key) {
+        var node = state.nodesByKey[key];
         if (node.type === CATEGORY_TYPE) {
             var children = (state.childrenByParent[key] || []).slice();
             delete state.childrenByParent[key];
@@ -592,7 +774,7 @@
 
         var options = document.createElement("div");
         options.className = "canvas-add-options";
-        [[TEXT_TYPE, "# Text"], [VOICE_TYPE, "🔊 Voice"]].forEach(function (pair) {
+        [[TEXT_TYPE, "# TEXT"], [VOICE_TYPE, "<) VOICE"]].forEach(function (pair) {
             var btn = document.createElement("button");
             btn.type = "button";
             btn.textContent = pair[1];
@@ -682,7 +864,8 @@
         }, function onSave() {
             var name = nameInput.value.trim();
             if (!name) {
-                window.alert("Name cannot be empty.");
+                notify("ERR", "name cannot be empty");
+                nameInput.focus();
                 return false;
             }
 
@@ -698,35 +881,41 @@
                 });
             }
 
-            tempCounter += 1;
-            var ref = { kind: "temp", id: "new-" + tempCounter };
-            var key = refKey(ref);
-            var node = {
-                ref: ref,
-                type: type,
-                name: name,
-                topic: topicInput ? (topicInput.value.trim() || null) : null,
-                nsfw: false,
-                rate_limit_per_user: 0,
-                bitrate: null,
-                user_limit: null,
-                overwrites: overwrites,
-                parentRef: parentKey ? state.nodesByKey[parentKey].ref : null,
-                deleted: false,
-                dirty: true,
-            };
-            state.nodesByKey[key] = node;
-            if (parentKey) {
-                state.childrenByParent[parentKey].push(key);
-            } else {
-                state.rootOrder.push(key);
-            }
-            markDirty();
+            var topic = topicInput ? (topicInput.value.trim() || null) : null;
+            selectedKey = createChannelNode(type, name, parentKey, topic, overwrites);
             render();
             return true;
         });
 
         setTimeout(function () { nameInput.focus(); }, 0);
+    }
+
+    // Adds a new (temp) text/voice channel to the draft; returns its key.
+    function createChannelNode(type, name, parentKey, topic, overwrites) {
+        tempCounter += 1;
+        var ref = { kind: "temp", id: "new-" + tempCounter };
+        var key = refKey(ref);
+        state.nodesByKey[key] = {
+            ref: ref,
+            type: type,
+            name: name,
+            topic: topic,
+            nsfw: false,
+            rate_limit_per_user: 0,
+            bitrate: null,
+            user_limit: null,
+            overwrites: overwrites,
+            parentRef: parentKey ? state.nodesByKey[parentKey].ref : null,
+            deleted: false,
+            dirty: true,
+        };
+        if (parentKey) {
+            state.childrenByParent[parentKey].push(key);
+        } else {
+            state.rootOrder.push(key);
+        }
+        markDirty();
+        return key;
     }
 
     document.getElementById("canvas-root-add").addEventListener("click", function (event) {
@@ -765,7 +954,8 @@
         }, function onSave() {
             var name = nameInput.value.trim();
             if (!name) {
-                window.alert("Name cannot be empty.");
+                notify("ERR", "name cannot be empty");
+                nameInput.focus();
                 return false;
             }
             tempCounter += 1;
@@ -1080,12 +1270,20 @@
     var discardBtn = document.getElementById("canvas-discard");
     if (discardBtn) {
         discardBtn.addEventListener("click", function () {
-            if (hasChanges && !window.confirm("Discard all unsaved changes in this draft?")) {
+            if (!hasChanges) {
+                notify("SYS", "draft already matches discord");
                 return;
             }
-            state = buildState();
-            hasChanges = false;
-            render();
+            ask("discard draft \u00B7 ALL UNSAVED CHANNEL CHANGES ARE LOST. PROCEED?").then(function (yes) {
+                if (!yes) {
+                    return;
+                }
+                state = buildState();
+                hasChanges = false;
+                selectedKey = null;
+                render();
+                notify("OK", "draft discarded");
+            });
         });
     }
 
@@ -1094,7 +1292,7 @@
         applyBtn.addEventListener("click", function () {
             var batch = computeBatch();
             if (!batch.channels.length && !batch.positions.length) {
-                window.alert("No changes to apply.");
+                notify("SYS", "no changes to apply");
                 return;
             }
             document.getElementById("canvas-batch-field").value = JSON.stringify(batch);

@@ -653,3 +653,63 @@ async def test_set_volume_out_of_range_rerenders_with_error(
 
     assert response.status_code == 400
     assert "between 0 and 100" in response.text
+
+
+async def test_restart_and_stop_round_trip(
+    db_session: AsyncSession, web_config: WebConfig, seed_session: SeedSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await BotGuildRepository(db_session).mark_present(GUILD_A, "Guild A")
+    csrf_token = await seed_session(db_session, permissions={str(GUILD_A): 0x20})
+    monkeypatch.setattr(AudioProvider, "resolve", AsyncMock(side_effect=[_fake_track("Song"), _fake_track("Next")]))
+    monkeypatch.setattr(AudioProvider, "create_audio_source", lambda self, track, volume: f"source:{track.title}")
+
+    guild = FakeGuild(GUILD_A, voice_channels=[_make_voice_channel(VOICE_CHANNEL_A)])
+    service = MusicService()
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(_discord_handler)) as http,
+        _bot_http_client(guild, service, web_config.internal_api_token) as bot_http,
+    ):
+        app = create_app(web_config, http_client=http, bot_http_client=bot_http)
+        with TestClient(app) as client:
+            client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+            player = await service.get_or_create_player(GUILD_A)
+            await player.connect(guild.voice_channels[0])
+            await player.resolve_and_enqueue("song", requested_by=1)
+            await player.resolve_and_enqueue("next", requested_by=1)
+            await player.start_or_advance()
+
+            restart_response = client.post(
+                f"/guilds/{GUILD_A}/music/player/restart", data={"csrf_token": csrf_token}, follow_redirects=False
+            )
+            assert restart_response.status_code == 303
+            assert player._restart_once is True
+
+            await player.start_or_advance()  # the voice client's deferred `after`
+            stop_response = client.post(
+                f"/guilds/{GUILD_A}/music/player/stop", data={"csrf_token": csrf_token}, follow_redirects=False
+            )
+            assert stop_response.status_code == 303
+            assert player.current is None
+            assert player.queue == []
+
+
+async def test_stop_with_nothing_playing_rerenders_with_error(
+    db_session: AsyncSession, web_config: WebConfig, seed_session: SeedSession
+) -> None:
+    await BotGuildRepository(db_session).mark_present(GUILD_A, "Guild A")
+    csrf_token = await seed_session(db_session, permissions={str(GUILD_A): 0x20})
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(_discord_handler)) as http,
+        _bot_http_client(FakeGuild(GUILD_A), MusicService(), web_config.internal_api_token) as bot_http,
+    ):
+        app = create_app(web_config, http_client=http, bot_http_client=bot_http)
+        with TestClient(app) as client:
+            client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+            response = client.post(f"/guilds/{GUILD_A}/music/player/stop", data={"csrf_token": csrf_token})
+
+    assert response.status_code == 400
+    assert "Nothing is playing" in response.text
+    # Marked so the console reports it as an ERR line in SYSLOG.
+    assert "data-flash-error" in response.text

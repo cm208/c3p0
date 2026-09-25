@@ -52,11 +52,11 @@ Both front ends call the same service layer, so a rule enforced in Discord is th
 
 Log in with Discord OAuth2 and you see exactly the servers where you already hold **Manage Server** — no more, no less. Every feature area above gets a full settings page, and music gets **live** now-playing, queue, and transport controls rather than configuration toggles alone.
 
-The UI is an amber-phosphor "ops console" theme. It does not look like a generic admin panel, which is the point.
+The UI is a working 1980s amber-phosphor terminal, not a generic admin panel: a command line on every page (`music`, `play <song>`, `rm !rules`, `help`), F-key navigation, `(y/N)` confirmations for anything destructive, and a live SYSLOG column showing joins, command uses, moderation actions and music as they happen. Custom commands show how often they've been used, the Server page shows member, online and uptime counts, and the guild picker lists servers you manage that don't have C3P0 yet, with an invite link. Phosphor colour (`phosphor amber|sodium|green`) and CRT effect strength (`crt off|normal|max`) are console commands; reduced-motion users get the effects off by default.
 
-![C3P0 dashboard — server management, channels list](docs/images/dashboard-server-management.png)
+![C3P0 dashboard — the Server page: stat tiles, channel tree, SYSLOG](docs/images/dashboard-console.jpg)
 
-*Server management — channel list, with the roles / templates / audit log tabs alongside it.*
+*The Server page: live stat tiles, the drag-and-drop channel tree, and the SYSLOG feed on the right.*
 
 ### Server management
 

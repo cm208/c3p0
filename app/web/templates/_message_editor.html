@@ -1,0 +1,6 @@
+{# Included once at the end of any page with a <textarea data-message-editor>;
+   see app/web/static/message_editor.js for the per-textarea data-* options. #}
+{% if editor_context %}
+<script type="application/json" id="message-editor-context">{{ editor_context | tojson }}</script>
+<script src="/static/message_editor.js?v={{ asset_version }}" defer></script>
+{% endif %}

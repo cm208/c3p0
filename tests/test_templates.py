@@ -7,8 +7,10 @@ from app.utils.templates import (
     TemplateContext,
     UnknownTemplateVariableError,
     context_variables,
+    format_uptime,
     render_template,
     render_template_context,
+    uptime_since,
     validate_template,
 )
 
@@ -88,3 +90,23 @@ def test_render_template_context_combines_both_steps() -> None:
     rendered = render_template_context("Hi {user}, welcome to {server}!", context)
 
     assert rendered == "Hi Alice, welcome to Test Server!"
+
+
+def test_count_is_an_alias_of_member_count_and_uptime_is_passed_through() -> None:
+    context = TemplateContext(
+        user_display_name="Alice", user_mention="<@1>", user_id=1, guild_name="G", member_count=42, uptime="3d 4h"
+    )
+
+    assert render_template_context("#{count} of {member_count}, up {uptime}", context) == "#42 of 42, up 3d 4h"
+    assert {"count", "uptime"} <= STANDARD_VARIABLES
+
+
+def test_format_uptime_picks_the_two_largest_units() -> None:
+    assert format_uptime(14 * 86400 + 6 * 3600 + 59) == "14d 6h"
+    assert format_uptime(3 * 3600 + 12 * 60) == "3h 12m"
+    assert format_uptime(59) == "0m"
+    assert format_uptime(-5) == "0m"
+
+
+def test_uptime_since_is_empty_without_a_start_time() -> None:
+    assert uptime_since(None) == ""

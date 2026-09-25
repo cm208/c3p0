@@ -30,14 +30,17 @@ from app.services.custom_command_service import (
     CustomCommandValidationError,
     CustomCommandView,
 )
-from app.utils.templates import TemplateContext
+from app.services.event_log_service import EventLogService, EventTag
+from app.utils.templates import TemplateContext, uptime_since
 
 logger = logging.getLogger(__name__)
 
 _LIST_DESCRIPTION_LIMIT = 3900
 
 
-def _build_context(member: discord.Member, channel: discord.abc.GuildChannel) -> TemplateContext:
+def _build_context(
+    member: discord.Member, channel: discord.abc.GuildChannel, *, uptime: str = ""
+) -> TemplateContext:
     return TemplateContext(
         user_display_name=str(member),
         user_mention=member.mention,
@@ -46,6 +49,7 @@ def _build_context(member: discord.Member, channel: discord.abc.GuildChannel) ->
         member_count=member.guild.member_count or 0,
         channel_name=getattr(channel, "name", ""),
         channel_mention=getattr(channel, "mention", ""),
+        uptime=uptime,
     )
 
 
@@ -58,6 +62,7 @@ class CustomCommandsCog(commands.Cog, name="CustomCommands"):
         self.bot = bot
         self.service = CustomCommandService(default_prefix=bot.default_prefix)
         self.config_service = ConfigurationService(default_prefix=bot.default_prefix)
+        self.events = EventLogService(default_prefix=bot.default_prefix)
 
     # --- Invocation ---
 
@@ -92,7 +97,9 @@ class CustomCommandsCog(commands.Cog, name="CustomCommands"):
             await message.channel.send(f"⏳ That command is on cooldown for {int(remaining) + 1}s.", delete_after=5)
             return
 
-        context = _build_context(member, message.channel)
+        context = _build_context(
+            member, message.channel, uptime=uptime_since(getattr(self.bot, "started_monotonic", None))
+        )
         rendered = self.service.render_response(view, context)
 
         try:
@@ -106,6 +113,13 @@ class CustomCommandsCog(commands.Cog, name="CustomCommands"):
 
         self.service.record_usage(view, member.id)
         CUSTOM_COMMAND_INVOCATIONS.inc()
+        try:
+            await self.service.increment_use_count(view)
+        except Exception:
+            # The response already went out - a failed counter bump
+            # mustn't surface as an error for the user.
+            logger.exception("Failed to increment custom command use count", extra={"guild_id": message.guild.id})
+        await self.events.record(message.guild.id, EventTag.CMD, f"{view.trigger} invoked by @{member}")
         if view.usage_logging_enabled:
             logger.info(
                 "Custom command invoked",

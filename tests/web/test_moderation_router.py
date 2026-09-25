@@ -498,3 +498,26 @@ async def test_post_delete_infraction_rejects_bad_csrf(
 
     assert response.status_code == 403
     assert await ModerationService().get_infraction(GUILD_A, infraction.id) is not None
+
+
+async def test_get_moderation_type_chips_count_each_action(
+    db_session: AsyncSession, web_config: WebConfig, seed_session: SeedSession
+) -> None:
+    await _seed(db_session, seed_session)
+    service = ModerationService()
+    for kind in (InfractionType.WARN, InfractionType.WARN, InfractionType.BAN):
+        await service.record_infraction(GUILD_A, user_id=555, moderator_id=42, type=kind, reason="x")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_discord_handler)) as http:
+        app = create_app(web_config, http_client=http)
+        with TestClient(app) as client:
+            client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+            response = client.get(f"/guilds/{GUILD_A}/moderation?type=warn")
+
+    assert response.status_code == 200
+    assert 'ALL <span class="count">3</span>' in response.text
+    assert 'WARN <span class="count">2</span>' in response.text
+    assert 'BAN <span class="count">1</span>' in response.text
+    assert 'KICK <span class="count">0</span>' in response.text
+    # The active chip is the current type filter; its link keeps the query.
+    assert 'class="chip is-active" href="/guilds/111/moderation?sort=created_at&amp;dir=desc&amp;type=warn"' in response.text

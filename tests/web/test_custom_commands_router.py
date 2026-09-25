@@ -53,6 +53,11 @@ async def test_get_list_shows_empty_state(
 
     assert response.status_code == 200
     assert "No custom commands yet" in response.text
+    # The create form's response field gets the message editor, with the
+    # guild's live roles (as string ids) available to its mention picker.
+    assert "data-message-editor" in response.text
+    assert 'id="message-editor-context"' in response.text
+    assert f'"id": "{MEMBER_ROLE_ID}"' in response.text
 
 
 async def test_get_list_shows_existing_commands(
@@ -463,3 +468,43 @@ async def test_get_list_404s_when_bot_absent(
             response = client.get(f"/guilds/{GUILD_A}/custom-commands")
 
     assert response.status_code == 404
+
+
+async def test_post_create_adds_missing_prefix_and_defaults_the_name(
+    db_session: AsyncSession, web_config: WebConfig, seed_session: SeedSession
+) -> None:
+    csrf_token = await _seed(db_session, seed_session)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_discord_handler)) as http:
+        app = create_app(web_config, http_client=http)
+        with TestClient(app) as client:
+            client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+            response = client.post(
+                f"/guilds/{GUILD_A}/custom-commands",
+                data={"name": "", "trigger": "lan", "response": "Saturday.", "csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+
+    assert response.status_code == 303
+    command = await CustomCommandService().get_by_trigger(GUILD_A, "!lan")
+    assert command is not None
+    assert command.name == "!lan"
+
+
+async def test_get_list_shows_use_counts(
+    db_session: AsyncSession, web_config: WebConfig, seed_session: SeedSession
+) -> None:
+    await _seed(db_session, seed_session)
+    service = CustomCommandService()
+    view = await service.create(GUILD_A, name="Rules", trigger="!rules", response="Be nice.", created_by=1)
+    for _ in range(3):
+        await service.increment_use_count(view)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(_discord_handler)) as http:
+        app = create_app(web_config, http_client=http)
+        with TestClient(app) as client:
+            client.cookies.set(SESSION_COOKIE_NAME, "good-token")
+            response = client.get(f"/guilds/{GUILD_A}/custom-commands")
+
+    assert "3&times;" in response.text
+    assert 'data-confirm="rm !rules' in response.text

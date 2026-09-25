@@ -78,6 +78,10 @@ def _make_discord_handler(*, fail: set[str] | None = None):
             )
         if method == "GET" and f"/members/{BOT_USER_ID}" in path:
             return httpx.Response(200, json={"roles": []})
+        if method == "GET" and path.endswith(f"/guilds/{GUILD_A}"):
+            return httpx.Response(
+                200, json={"id": str(GUILD_A), "approximate_member_count": 1284, "approximate_presence_count": 311}
+            )
 
         if method == "POST" and path.endswith("/channels"):
             if "create" in fail:
@@ -129,8 +133,22 @@ async def _seed(db_session: AsyncSession, seed_session: SeedSession, *, permissi
     return await seed_session(db_session, permissions={str(GUILD_A): permissions})
 
 
-def _client(web_config: WebConfig, http: httpx.AsyncClient) -> TestClient:
-    app = create_app(web_config, http_client=http)
+def _bot_status_handler(request: httpx.Request) -> httpx.Response:
+    assert request.url.path == "/status"
+    return httpx.Response(
+        200,
+        json={
+            "version": "1.4.0", "ready": True, "latency_ms": 42, "shard_id": 0, "shard_count": 1,
+            "guild_count": 2, "started_at": "2026-09-10T08:00:00+00:00", "uptime_seconds": 14 * 86400 + 6 * 3600,
+        },
+    )
+
+
+def _client(
+    web_config: WebConfig, http: httpx.AsyncClient, bot_http: httpx.AsyncClient | None = None
+) -> TestClient:
+    bot_http = bot_http or httpx.AsyncClient(transport=httpx.MockTransport(_bot_status_handler))
+    app = create_app(web_config, http_client=http, bot_http_client=bot_http)
     client = TestClient(app)
     client.cookies.set(SESSION_COOKIE_NAME, "good-token")
     return client
@@ -162,6 +180,41 @@ async def test_get_channel_canvas_embeds_live_state_as_json(
     assert "Voice" in response.text
     assert "Category" in response.text
     assert str(CHANNEL_WITH_OVERWRITE) in response.text
+    # Stat tiles: Discord's approximate counts, live channel/category
+    # counts, and the bot's own uptime.
+    assert "1,284" in response.text
+    assert "24% ACTIVE" in response.text
+    assert ">03<" in response.text
+    assert "1 CATEGORY" in response.text
+    assert "14d6h" in response.text
+    assert "LAST RESTART 09/10" in response.text
+
+
+async def test_get_channel_canvas_degrades_stat_tiles_when_bot_and_counts_unavailable(
+    db_session: AsyncSession, web_config: WebConfig, seed_session: SeedSession
+) -> None:
+    await _seed(db_session, seed_session)
+    handler, _calls = _make_discord_handler()
+
+    def counts_fail(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(f"/guilds/{GUILD_A}"):
+            return httpx.Response(500)
+        return handler(request)
+
+    def bot_down(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("bot restarting")
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(counts_fail)) as http,
+        httpx.AsyncClient(transport=httpx.MockTransport(bot_down)) as bot_http,
+    ):
+        with _client(web_config, http, bot_http) as client:
+            response = client.get(f"/guilds/{GUILD_A}/server-management/channels")
+
+    assert response.status_code == 200
+    assert "BOT UNREACHABLE" in response.text
+    # The canvas itself still renders from the channel list.
+    assert "general" in response.text
 
 
 async def test_get_channel_canvas_404s_when_bot_absent(

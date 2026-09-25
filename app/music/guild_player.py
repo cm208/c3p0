@@ -19,6 +19,7 @@ import logging
 import random
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from enum import Enum
 
 import discord
@@ -51,6 +52,12 @@ class GuildPlayer:
         self._loop: asyncio.AbstractEventLoop | None = None
         # Consumed by the next start_or_advance() call only - see skip().
         self._skip_song_loop_once = False
+        # Consumed by the next start_or_advance() call only - see restart().
+        self._restart_once = False
+        # Optional hook fired (as a background task, never awaited inline)
+        # whenever a track actually starts. MusicService uses it to feed
+        # the dashboard's activity log; None in tests and by default.
+        self.on_track_start: Callable[[Track], Awaitable[None]] | None = None
         # Elapsed-time tracking for `current`, correct across pause/resume -
         # see elapsed_seconds. All three reset together whenever a new track
         # actually starts (start_or_advance) or playback stops (stop()).
@@ -185,12 +192,31 @@ class GuildPlayer:
         self.voice_client.stop()
         return True
 
+    async def restart(self) -> bool:
+        """Start the current track again from the beginning.
+
+        Same mechanism as skip(): stopping the voice client runs the
+        `after` callback, which calls start_or_advance(). The one-shot flag
+        makes that call replay `current` instead of taking the next queue
+        entry - without it, queue-loop mode would also re-append `current`
+        to the back of the queue.
+        """
+        if self.voice_client is None or not (self.voice_client.is_playing() or self.voice_client.is_paused()):
+            return False
+        self._restart_once = True
+        self.voice_client.stop()
+        return True
+
     async def start_or_advance(self) -> bool:
         """Play the next track. Returns False if there's nothing to play."""
         skip_song_loop = self._skip_song_loop_once
         self._skip_song_loop_once = False
+        restart = self._restart_once
+        self._restart_once = False
 
-        if self.loop_mode == LoopMode.SONG and self.current is not None and not skip_song_loop:
+        if restart and self.current is not None:
+            next_track = self.current
+        elif self.loop_mode == LoopMode.SONG and self.current is not None and not skip_song_loop:
             next_track = self.current
         elif self._queue:
             next_track = self._queue.popleft()
@@ -215,6 +241,8 @@ class GuildPlayer:
 
         assert self.voice_client is not None
         self.voice_client.play(source, after=_after)
+        if self.on_track_start is not None:
+            loop.create_task(self.on_track_start(next_track))
         return True
 
     async def _advance(self) -> None:

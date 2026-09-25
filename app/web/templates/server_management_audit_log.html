@@ -1,23 +1,33 @@
 {% extends "server_management_base.html" %}
-{% block title %}Audit Log - Server Management - C3P0 Dashboard{% endblock %}
-{% block sm_title %}Audit Log{% endblock %}
+{% block title %}Audit Log - Server - C3P0 Console{% endblock %}
+{% block sm_title %}AUDIT.LOG{% endblock %}
 {% block sm_content %}
-<ul class="console-log hud-frame">
-    {% for entry in entries %}
-    <li>
-        <span class="log-time">{{ entry.created_at.strftime("%H:%M") }}</span>
-        <span class="log-type">{{ entry.action.value }}</span>
-        <span class="log-detail">
-            <span class="system-id">{{ entry.target_type.value | upper }}-{{ entry.target_id }}</span>
-            {{ entry.target_name }} &middot; by {{ entry.actor_discord_user_id }}
-        </span>
-        <span class="log-meta">{{ entry.created_at.strftime("%Y-%m-%d") }} &middot; {{ entry.summary }}</span>
-    </li>
-    {% else %}
-    <li class="empty-state">No server-management activity logged yet.</li>
-    {% endfor %}
-</ul>
+<section class="frame" style="padding: 22px 10px 10px;">
+    <span class="frame-label">[ SERVER CHANGES ]</span>
+    <div class="table-wrap">
+    <table class="data-table">
+        <thead>
+            <tr><th>Time</th><th>Action</th><th>Target</th><th>By</th><th>Summary</th></tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr>
+                <td class="dim num">{{ entry.created_at.strftime("%m/%d %H:%M") }}</td>
+                <td><span class="badge {% if entry.action.value.endswith('_delete') %}hard{% endif %}">{{ entry.action.value }}</span></td>
+                <td>{{ entry.target_name }} <span class="dim small">{{ entry.target_type.value | upper }}-{{ entry.target_id }}</span></td>
+                <td class="dim">{{ entry.actor_discord_user_id }}</td>
+                <td class="wrap">{{ entry.summary }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="empty-state">No server-management activity logged yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
 {% if has_more %}
-<a class="button secondary" href="/guilds/{{ guild_id }}/server-management/audit-log?offset={{ next_offset }}">Load older</a>
+<div class="actions">
+    <a class="button secondary" href="/guilds/{{ guild_id }}/server-management/audit-log?offset={{ next_offset }}">Load older &#9658;</a>
+</div>
 {% endif %}
 {% endblock %}

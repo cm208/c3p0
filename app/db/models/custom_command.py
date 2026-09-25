@@ -56,6 +56,11 @@ class CustomCommand(Base, GuildScopedMixin, TimestampMixin):
 
     usage_logging_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Lifetime invocation count, shown on the dashboard. Counts every
+    # successful response regardless of usage_logging_enabled (which only
+    # controls the per-use log line).
+    use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
     created_by: Mapped[int] = mapped_column(BigInteger)
 
     def __repr__(self) -> str:

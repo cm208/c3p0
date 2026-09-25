@@ -1,14 +1,20 @@
 {% extends "guild_base.html" %}
 {% block guild_content %}
-<span class="eyebrow">Server Management</span>
-<h1>{% block sm_title %}Server Management{% endblock %}</h1>
-
-<div class="role-type-links">
-    <a href="/guilds/{{ guild_id }}/server-management/roles" class="button {% if active_subtab == 'roles' %}secondary{% endif %}">Roles</a>
-    <a href="/guilds/{{ guild_id }}/server-management/channels" class="button {% if active_subtab == 'channels' %}secondary{% endif %}">Channels</a>
-    <a href="/guilds/{{ guild_id }}/server-management/templates" class="button {% if active_subtab == 'templates' %}secondary{% endif %}">Templates</a>
-    <a href="/guilds/{{ guild_id }}/server-management/audit-log" class="button {% if active_subtab == 'audit-log' %}secondary{% endif %}">Audit Log</a>
+<div class="stack">
+<div class="spread">
+    <h1 class="page-title">{% block sm_title %}SERVER{% endblock %}</h1>
+    <nav class="subnav" aria-label="Server management">
+        {% for tab, label, path in [
+            ("channels", "Channels", "channels"),
+            ("roles", "Roles", "roles"),
+            ("templates", "Templates", "templates"),
+            ("audit-log", "Audit Log", "audit-log"),
+        ] %}
+        <a href="/guilds/{{ guild_id }}/server-management/{{ path }}" class="{% if active_subtab == tab %}is-active{% endif %}"
+           {% if active_subtab == tab %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+    </nav>
 </div>
-
 {% block sm_content %}{% endblock %}
+</div>
 {% endblock %}

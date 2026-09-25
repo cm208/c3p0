@@ -51,6 +51,24 @@ def build_authorize_url(*, client_id: int, redirect_uri: str, state: str) -> str
     return f"{AUTHORIZE_URL}?{query}"
 
 
+# The same permission set docs/discord-setup.md's invite link requests.
+BOT_INVITE_PERMISSIONS = 1099783302230
+
+
+def build_invite_url(*, client_id: int, guild_id: int) -> str:
+    """Add-the-bot link, preselecting guild_id (the picker's [INVITE])."""
+    query = urlencode(
+        {
+            "client_id": client_id,
+            "scope": "bot applications.commands",
+            "permissions": BOT_INVITE_PERMISSIONS,
+            "guild_id": guild_id,
+            "disable_guild_select": "true",
+        }
+    )
+    return f"{AUTHORIZE_URL}?{query}"
+
+
 @dataclass(frozen=True, slots=True)
 class OAuthTokens:
     access_token: str
@@ -71,6 +89,15 @@ class DiscordUserGuild:
     name: str
     icon: str | None
     permissions: int
+    # Only populated when fetched with with_counts=True.
+    approximate_member_count: int | None = None
+    approximate_presence_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiscordGuildCounts:
+    member_count: int
+    presence_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,10 +246,13 @@ async def fetch_current_user(http: httpx.AsyncClient, access_token: str) -> Disc
     return DiscordUser(id=int(payload["id"]), username=payload["username"], avatar=payload.get("avatar"))
 
 
-async def fetch_user_guilds(http: httpx.AsyncClient, access_token: str) -> list[DiscordUserGuild]:
+async def fetch_user_guilds(
+    http: httpx.AsyncClient, access_token: str, *, with_counts: bool = False
+) -> list[DiscordUserGuild]:
     response = await http.get(
         f"{DISCORD_API_BASE}/users/@me/guilds",
         headers={"Authorization": f"Bearer {access_token}"},
+        params={"with_counts": "true"} if with_counts else None,
     )
     if response.status_code != 200:
         raise DiscordAPIError(f"Discord /users/@me/guilds returned {response.status_code}")
@@ -235,9 +265,31 @@ async def fetch_user_guilds(http: httpx.AsyncClient, access_token: str) -> list[
             # Discord returns this as a string since permission bitfields
             # can exceed 32 bits.
             permissions=int(g["permissions"]),
+            approximate_member_count=g.get("approximate_member_count"),
+            approximate_presence_count=g.get("approximate_presence_count"),
         )
         for g in response.json()
     ]
+
+
+async def fetch_guild_counts(
+    http: httpx.AsyncClient, bot_token: str, guild_id: int
+) -> DiscordGuildCounts:
+    """Approximate member/online counts (Discord's own figures, refreshed
+    by Discord every few minutes - the web process has no gateway presence
+    data of its own)."""
+    response = await http.get(
+        f"{DISCORD_API_BASE}/guilds/{guild_id}",
+        headers=_bot_headers(bot_token),
+        params={"with_counts": "true"},
+    )
+    if response.status_code != 200:
+        raise DiscordAPIError(f"Discord /guilds/{guild_id} returned {response.status_code}")
+    data = response.json()
+    return DiscordGuildCounts(
+        member_count=data.get("approximate_member_count") or 0,
+        presence_count=data.get("approximate_presence_count") or 0,
+    )
 
 
 def _bot_headers(bot_token: str) -> dict[str, str]:

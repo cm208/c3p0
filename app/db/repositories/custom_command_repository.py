@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.db.models.custom_command import CustomCommand
 from app.db.repositories.base import BaseRepository
@@ -116,3 +116,14 @@ class CustomCommandRepository(BaseRepository):
         command.usage_logging_enabled = enabled
         await self.session.flush()
         return command
+
+    async def increment_use_count(self, guild_id: int, command_id: int) -> None:
+        # A single UPDATE ... SET use_count = use_count + 1 rather than
+        # read-modify-write, so two near-simultaneous invocations can't
+        # both read N and both write N+1.
+        stmt = (
+            update(CustomCommand)
+            .where(CustomCommand.guild_id == guild_id, CustomCommand.id == command_id)
+            .values(use_count=CustomCommand.use_count + 1)
+        )
+        await self.session.execute(stmt)

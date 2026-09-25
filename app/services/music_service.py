@@ -18,7 +18,9 @@ from app.db.database import session_scope
 from app.db.models.music_config import MusicConfig
 from app.db.repositories.guild_config_repository import GuildConfigRepository
 from app.db.repositories.music_config_repository import MusicConfigRepository
+from app.music.audio_provider import Track
 from app.music.guild_player import GuildPlayer
+from app.services.event_log_service import EventLogService, EventTag
 
 MIN_VOLUME = 0
 MAX_VOLUME = 100
@@ -54,6 +56,7 @@ def _to_view(config: MusicConfig) -> MusicConfigView:
 class MusicService:
     def __init__(self, default_prefix: str = "!") -> None:
         self._players: dict[int, GuildPlayer] = {}
+        self._events = EventLogService(default_prefix=default_prefix)
         # Only needed so that configuring music before ever running /config
         # still creates a GuildConfig row with the right default prefix,
         # rather than silently hardcoding "!" - see _ensure_guild_row.
@@ -121,8 +124,16 @@ class MusicService:
         player = GuildPlayer(
             guild_id, max_queue_size=config.max_queue_size, default_volume=config.default_volume
         )
+        player.on_track_start = lambda track: self._announce_track(guild_id, track)
         self._players[guild_id] = player
         return player
+
+    async def _announce_track(self, guild_id: int, track: Track) -> None:
+        await self._events.record(guild_id, EventTag.MUSIC, f"now playing: {track.title}")
+
+    async def record_event(self, guild_id: int, text: str) -> None:
+        """A MUSIC line in the dashboard's activity feed (queued, skipped, ...)."""
+        await self._events.record(guild_id, EventTag.MUSIC, text)
 
     def get_player(self, guild_id: int) -> GuildPlayer | None:
         return self._players.get(guild_id)

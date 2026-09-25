@@ -16,6 +16,7 @@ from discord.ext import commands
 
 from app.metrics import MEMBER_JOINS, MEMBER_LEAVES
 from app.services.config_service import ConfigurationService
+from app.services.event_log_service import EventLogService, EventTag
 from app.services.welcome_service import (
     DEFAULT_DM_TEMPLATE,
     DEFAULT_MESSAGE_TEMPLATE,
@@ -29,13 +30,16 @@ from app.utils.permissions import (
     bot_can_manage_role,
     require_bot_can_manage_role,
 )
+from app.utils.templates import uptime_since
 
 logger = logging.getLogger(__name__)
 
 _EMBED_FIELD_PREVIEW_LIMIT = 990
 
 
-def _build_context(member: discord.Member, channel: discord.TextChannel | None) -> JoinContext:
+def _build_context(
+    member: discord.Member, channel: discord.TextChannel | None, *, uptime: str = ""
+) -> JoinContext:
     return JoinContext(
         user_display_name=str(member),
         user_mention=member.mention,
@@ -44,6 +48,7 @@ def _build_context(member: discord.Member, channel: discord.TextChannel | None) 
         member_count=member.guild.member_count or 0,
         channel_name=channel.name if channel else "",
         channel_mention=channel.mention if channel else "",
+        uptime=uptime,
     )
 
 
@@ -73,6 +78,10 @@ class WelcomeCog(commands.Cog, name="Welcome"):
         self.bot = bot
         self.welcome_service = WelcomeService(default_prefix=bot.default_prefix)
         self.config_service = ConfigurationService(default_prefix=bot.default_prefix)
+        self.events = EventLogService(default_prefix=bot.default_prefix)
+
+    def _uptime(self) -> str:
+        return uptime_since(getattr(self.bot, "started_monotonic", None))
 
     # --- Listeners ---
 
@@ -80,6 +89,7 @@ class WelcomeCog(commands.Cog, name="Welcome"):
     async def on_member_join(self, member: discord.Member) -> None:
         MEMBER_JOINS.inc()
         guild = member.guild
+        await self.events.record(guild.id, EventTag.JOIN, f"@{member} joined")
 
         try:
             config = await self.welcome_service.get_config(guild.id)
@@ -116,13 +126,14 @@ class WelcomeCog(commands.Cog, name="Welcome"):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member) -> None:
         MEMBER_LEAVES.inc()
+        await self.events.record(member.guild.id, EventTag.LEAVE, f"@{member} left")
 
     # --- Join-handling helpers ---
 
     async def _send_channel_message(
         self, config: WelcomeConfigView, member: discord.Member, channel: discord.TextChannel
     ) -> None:
-        context = _build_context(member, channel)
+        context = _build_context(member, channel, uptime=self._uptime())
         template = config.message_template or DEFAULT_MESSAGE_TEMPLATE
         try:
             if config.embed_enabled:
@@ -157,7 +168,7 @@ class WelcomeCog(commands.Cog, name="Welcome"):
             )
 
     async def _send_dm(self, config: WelcomeConfigView, member: discord.Member) -> None:
-        context = _build_context(member, None)
+        context = _build_context(member, None, uptime=self._uptime())
         template = config.dm_template or DEFAULT_DM_TEMPLATE
         try:
             await member.send(self.welcome_service.render_join_message(template, context))

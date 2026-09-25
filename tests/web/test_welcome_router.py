@@ -58,6 +58,13 @@ async def test_get_welcome_renders_current_config(
     assert "Welcome {user_mention}!" in response.text
     assert "#welcome" in response.text
     assert ">Member<" in response.text
+    # Message editor: three enhanced fields, the DM one without channel
+    # variables (a DM has no channel), and the page-level JSON context.
+    assert response.text.count("data-message-editor") == 3
+    assert 'data-variables="user_mention,user,user_id,server,member_count,count,uptime"' in response.text
+    assert 'id="message-editor-context"' in response.text
+    assert "/static/message_editor.js" in response.text
+    assert f'"id": "{CHANNEL_A}"' in response.text
 
 
 async def test_get_welcome_403s_without_manage_permission(

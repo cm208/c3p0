@@ -1,95 +1,79 @@
 {% extends "guild_base.html" %}
-{% block title %}Reaction Roles - C3P0 Dashboard{% endblock %}
+{% block title %}Reaction Roles - C3P0 Console{% endblock %}
 {% block guild_content %}
-<span class="eyebrow">Self-Assignable Roles</span>
-<h1>Reaction Roles</h1>
+<div class="stack">
+<div class="spread">
+    <h1 class="page-title">REACTION ROLES</h1>
+    <div class="actions">
+        <a class="button secondary" href="/guilds/{{ guild_id }}/roles/new?type=reaction">+ REACTION</a>
+        <a class="button secondary" href="/guilds/{{ guild_id }}/roles/new?type=button">+ BUTTON</a>
+        <a class="button secondary" href="/guilds/{{ guild_id }}/roles/new?type=select">+ SELECT MENU</a>
+    </div>
+</div>
+
+{% for group in groups %}
+<section class="frame role-group">
+    <span class="frame-label">[ {{ group.type | upper }} · {% if group.channel_name %}#{{ group.channel_name }}{% else %}CHANNEL NOT FOUND{% endif %} · {{ group.options | length }} ROLE{{ "S" if group.options | length != 1 else "" }} ]</span>
+    <div class="role-group-header">
+        <span class="dim">
+            MSG-{{ group.message_id }}
+            · <a href="https://discord.com/channels/{{ guild_id }}/{{ group.channel_id }}/{{ group.message_id }}" target="_blank" rel="noopener">VIEW MESSAGE</a>
+            · {% if group.enabled %}<span class="badge">on</span>{% else %}<span class="badge off">off</span>{% endif %}
+        </span>
+        <div class="item-actions">
+            <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/toggle" data-ok="group {{ 'disabled' if group.enabled else 'enabled' }}">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                <button type="submit" class="secondary">{{ "DISABLE" if group.enabled else "ENABLE" }}</button>
+            </form>
+            <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/delete"
+                  data-confirm="rm group MSG-{{ group.message_id }} · THIS CANNOT BE UNDONE. PROCEED?" data-ok="role group removed">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                <button type="submit" class="danger">[DEL]ETE GROUP</button>
+            </form>
+        </div>
+    </div>
+
+    <ul class="item-list role-group-options">
+        {% for option in group.options %}
+        <li class="item-row">
+            <span class="item-title">{{ option.role_name }}{% if option.binding.emoji %} · {{ option.binding.emoji }}{% endif %}</span>
+            <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/options/{{ option.binding.id }}/delete" class="inline" data-ok="role option removed">
+                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                <button type="submit" class="ghost-btn danger" aria-label="Remove {{ option.role_name }}">[DEL]</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/options" class="role-group-form" data-ok="role option added">
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <div class="field">
+            <label for="role_id_{{ group.message_id }}">Add role</label>
+            <span class="select-wrap"><select id="role_id_{{ group.message_id }}" name="role_id">
+                <option value="">SELECT A ROLE&hellip;</option>
+                {% for role in assignable_roles %}
+                <option value="{{ role.id }}">{{ role.name }}</option>
+                {% endfor %}
+            </select></span>
+        </div>
+        {% if group.type.value != "select" %}
+        <div class="field">
+            <label for="emoji_{{ group.message_id }}">Emoji{% if group.type.value == "button" %} (optional){% endif %}</label>
+            <input type="text" id="emoji_{{ group.message_id }}" name="emoji" placeholder="🎮" style="width: 120px;">
+        </div>
+        {% endif %}
+        <button type="submit" class="secondary">[ ADD ]</button>
+    </form>
+</section>
+{% else %}
+<section class="frame">
+    <span class="frame-label">[ 0 GROUPS ]</span>
+    <p class="empty-state">No self-assignable roles configured yet.</p>
+</section>
+{% endfor %}
 
 {% if groups %}
-<div class="stat-row">
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ total_groups }}</span>
-        <span class="stat-label">Message Groups</span>
-    </div>
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ total_options }}</span>
-        <span class="stat-label">Role Options</span>
-    </div>
-</div>
+<p class="dim">{{ total_groups }} MESSAGE GROUP{{ "S" if total_groups != 1 else "" }} · {{ total_options }} ROLE OPTION{{ "S" if total_options != 1 else "" }}</p>
 {% endif %}
-
-<div class="role-type-links">
-    <a class="button" href="/guilds/{{ guild_id }}/roles/new?type=reaction">+ Reaction Role</a>
-    <a class="button" href="/guilds/{{ guild_id }}/roles/new?type=button">+ Button Role</a>
-    <a class="button" href="/guilds/{{ guild_id }}/roles/new?type=select">+ Select Menu</a>
 </div>
-
-<ul class="item-list">
-    {% for group in groups %}
-    <li class="item-row role-group hud-frame">
-        <div class="role-group-header">
-            <div>
-                <span class="item-title">
-                    {{ group.type }} &middot;
-                    {% if group.channel_name %}#{{ group.channel_name }}{% else %}channel not found{% endif %}
-                </span>
-                <span class="item-meta">
-                    <span class="system-id">MSG-{{ group.message_id }}</span>
-                    &middot; <a href="https://discord.com/channels/{{ guild_id }}/{{ group.channel_id }}/{{ group.message_id }}" target="_blank" rel="noopener">view message</a>
-                </span>
-            </div>
-            <div class="item-actions">
-                <span class="badge {% if group.enabled %}on{% else %}off{% endif %}">{{ "ON" if group.enabled else "OFF" }}</span>
-                <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/toggle">
-                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                    <button type="submit" class="secondary">{{ "Disable" if group.enabled else "Enable" }}</button>
-                </form>
-                <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/delete">
-                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                    <button type="submit" class="danger">Delete Group</button>
-                </form>
-            </div>
-        </div>
-
-        <ul class="item-list role-group-options">
-            {% for option in group.options %}
-            <li class="item-row">
-                <div class="item-main">
-                    <span class="item-title">
-                        {{ option.role_name }}{% if option.binding.emoji %} &middot; {{ option.binding.emoji }}{% endif %}
-                    </span>
-                </div>
-                <div class="item-actions">
-                    <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/options/{{ option.binding.id }}/delete">
-                        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                        <button type="submit" class="danger">Remove</button>
-                    </form>
-                </div>
-            </li>
-            {% endfor %}
-        </ul>
-
-        <form method="post" action="/guilds/{{ guild_id }}/roles/{{ group.message_id }}/options" class="role-group-form">
-            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-            <div class="field">
-                <label for="role_id_{{ group.message_id }}">Add role option</label>
-                <select id="role_id_{{ group.message_id }}" name="role_id">
-                    <option value="">Select a role&hellip;</option>
-                    {% for role in assignable_roles %}
-                    <option value="{{ role.id }}">{{ role.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            {% if group.type.value != "select" %}
-            <div class="field">
-                <label for="emoji_{{ group.message_id }}">Emoji{% if group.type.value == "button" %} (optional){% endif %}</label>
-                <input type="text" id="emoji_{{ group.message_id }}" name="emoji" placeholder="🎮">
-            </div>
-            {% endif %}
-            <button type="submit" class="secondary">Add Option</button>
-        </form>
-    </li>
-    {% else %}
-    <li class="empty-state">No self-assignable roles configured yet.</li>
-    {% endfor %}
-</ul>
 {% endblock %}

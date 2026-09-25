@@ -89,13 +89,14 @@
             var editLink = document.createElement("a");
             editLink.className = "button secondary";
             editLink.href = "/guilds/" + listEl.dataset.guildId + "/server-management/roles/" + roleId + "/edit";
-            editLink.textContent = "Edit";
+            editLink.textContent = "[E]DIT";
             actions.appendChild(editLink);
 
             var deleteForm = document.createElement("form");
             deleteForm.method = "post";
             deleteForm.action = "/guilds/" + listEl.dataset.guildId + "/server-management/roles/" + roleId + "/delete";
-            deleteForm.dataset.confirm = "Delete role \"" + role.name + "\"? This can't be undone.";
+            deleteForm.dataset.confirm = "rm @" + role.name + " \u00B7 THIS CANNOT BE UNDONE. PROCEED?";
+            deleteForm.dataset.ok = "role @" + role.name + " deleted";
             var csrfInput = document.createElement("input");
             csrfInput.type = "hidden";
             csrfInput.name = "csrf_token";
@@ -104,7 +105,7 @@
             var deleteBtn = document.createElement("button");
             deleteBtn.type = "submit";
             deleteBtn.className = "danger";
-            deleteBtn.textContent = "Delete";
+            deleteBtn.textContent = "[DEL]";
             deleteForm.appendChild(deleteBtn);
             actions.appendChild(deleteForm);
 
@@ -195,12 +196,20 @@
     var discardBtn = document.getElementById("role-canvas-discard");
     if (discardBtn) {
         discardBtn.addEventListener("click", function () {
-            if (hasChanges && !window.confirm("Discard the unsaved role order?")) {
+            if (!hasChanges) {
                 return;
             }
-            order = initialOrder.slice();
-            hasChanges = false;
-            render();
+            var ask = window.C3P0 && window.C3P0.confirm
+                ? window.C3P0.confirm("discard role order \u00B7 UNSAVED DRAG CHANGES ARE LOST. PROCEED?")
+                : Promise.resolve(window.confirm("Discard the unsaved role order?"));
+            ask.then(function (yes) {
+                if (!yes) {
+                    return;
+                }
+                order = initialOrder.slice();
+                hasChanges = false;
+                render();
+            });
         });
     }
 
@@ -208,7 +217,11 @@
     if (applyBtn) {
         applyBtn.addEventListener("click", function () {
             if (!hasChanges) {
-                window.alert("No changes to apply.");
+                if (window.C3P0 && window.C3P0.print) {
+                    window.C3P0.print("SYS", "no changes to apply");
+                } else {
+                    window.alert("No changes to apply.");
+                }
                 return;
             }
             document.getElementById("role-canvas-order-field").value = JSON.stringify(order);

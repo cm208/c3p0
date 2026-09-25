@@ -12,6 +12,7 @@ calls and real ffmpeg invocation.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,6 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import __version__
 from app.music.audio_provider import AudioProvider, AudioResolutionError, Track
 from app.music.internal_api import create_internal_app
 from app.services.music_service import MusicService
@@ -592,3 +594,124 @@ async def test_enqueue_announcement_failure_does_not_fail_the_request(
     )
 
     assert response.status_code == 200  # the track was still queued successfully
+
+
+# --- Restart / stop (the dashboard's |◄ PREV and ■ STOP) ---
+
+
+async def test_restart_stops_current_track_for_replay(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(AudioProvider, "resolve", AsyncMock(return_value=_fake_track("A")))
+    guild = FakeGuild(GUILD_ID, voice_channels=[_make_voice_channel(10)])
+    service = MusicService()
+    client = _make_client(guild, service)
+    client.post(
+        f"/guilds/{GUILD_ID}/music/enqueue",
+        json={"query": "a", "requested_by": 1, "voice_channel_id": 10},
+        headers=AUTH_HEADERS,
+    )
+
+    response = client.post(f"/guilds/{GUILD_ID}/music/restart", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    player = service.get_player(GUILD_ID)
+    assert player._restart_once is True
+    assert player.current.title == "A"
+
+
+async def test_restart_with_nothing_playing_is_404(db_session: AsyncSession) -> None:
+    client = _make_client(FakeGuild(GUILD_ID), MusicService())
+
+    assert client.post(f"/guilds/{GUILD_ID}/music/restart", headers=AUTH_HEADERS).status_code == 404
+
+
+async def test_stop_clears_queue_and_playback(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(AudioProvider, "resolve", AsyncMock(side_effect=[_fake_track("A"), _fake_track("B")]))
+    guild = FakeGuild(GUILD_ID, voice_channels=[_make_voice_channel(10)])
+    service = MusicService()
+    client = _make_client(guild, service)
+    for query in ("a", "b"):
+        client.post(
+            f"/guilds/{GUILD_ID}/music/enqueue",
+            json={"query": query, "requested_by": 1, "voice_channel_id": 10},
+            headers=AUTH_HEADERS,
+        )
+
+    response = client.post(f"/guilds/{GUILD_ID}/music/stop", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["current"] is None
+    assert body["queue"] == []
+
+
+async def test_stop_with_nothing_playing_is_404(db_session: AsyncSession) -> None:
+    client = _make_client(FakeGuild(GUILD_ID), MusicService())
+
+    assert client.post(f"/guilds/{GUILD_ID}/music/stop", headers=AUTH_HEADERS).status_code == 404
+
+
+async def test_state_includes_the_voice_channel_name(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(AudioProvider, "resolve", AsyncMock(return_value=_fake_track("A")))
+    guild = FakeGuild(GUILD_ID, voice_channels=[_make_voice_channel(10, "Jukebox")])
+    client = _make_client(guild, MusicService())
+    client.post(
+        f"/guilds/{GUILD_ID}/music/enqueue",
+        json={"query": "a", "requested_by": 1, "voice_channel_id": 10},
+        headers=AUTH_HEADERS,
+    )
+
+    state = client.get(f"/guilds/{GUILD_ID}/music/state", headers=AUTH_HEADERS).json()
+
+    assert state["voice_channel_name"] == "Jukebox"
+
+
+# --- /status (the dashboard's status bar + UPTIME tile) ---
+
+
+class FakeStatusBot(FakeBot):
+    latency = 0.042
+    shard_id = None
+    shard_count = None
+    started_monotonic = 0.0
+
+    def __init__(self, guilds: dict[int, FakeGuild], *, ready: bool = True) -> None:
+        super().__init__(guilds)
+        self._ready = ready
+        self.guilds = list(guilds.values())
+        self.started_at = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+
+    def is_ready(self) -> bool:
+        return self._ready
+
+
+async def test_status_reports_version_latency_and_uptime(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = FakeStatusBot({GUILD_ID: FakeGuild(GUILD_ID)})
+    monkeypatch.setattr("app.music.internal_api.time.monotonic", lambda: 3600.0)
+    client = TestClient(create_internal_app(bot, music_service=MusicService(), internal_api_token=TOKEN))
+
+    body = client.get("/status", headers=AUTH_HEADERS).json()
+
+    assert body["version"] == __version__
+    assert body["ready"] is True
+    assert body["latency_ms"] == 42
+    assert body["shard_id"] == 0 and body["shard_count"] == 1
+    assert body["guild_count"] == 1
+    assert body["uptime_seconds"] == 3600
+    assert body["started_at"].startswith("2026-09-10T08:00:00")
+
+
+async def test_status_before_first_heartbeat_has_no_latency(db_session: AsyncSession) -> None:
+    bot = FakeStatusBot({}, ready=False)
+    bot.latency = float("inf")
+    client = TestClient(create_internal_app(bot, music_service=MusicService(), internal_api_token=TOKEN))
+
+    body = client.get("/status", headers=AUTH_HEADERS).json()
+
+    assert body["ready"] is False
+    assert body["latency_ms"] is None
+
+
+async def test_status_requires_the_token(db_session: AsyncSession) -> None:
+    client = TestClient(create_internal_app(FakeStatusBot({}), music_service=MusicService(), internal_api_token=TOKEN))
+
+    assert client.get("/status").status_code == 401

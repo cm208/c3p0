@@ -24,6 +24,7 @@ from discord.ext import commands
 from app.db.models.infraction import InfractionType
 from app.metrics import MODERATION_ACTIONS
 from app.services.config_service import ConfigurationService
+from app.services.event_log_service import EventLogService, EventTag
 from app.services.moderation_service import (
     ModerationService,
     ModerationValidationError,
@@ -62,6 +63,7 @@ class ModerationCog(commands.Cog, name="Moderation"):
         self.bot = bot
         self.service = ModerationService(default_prefix=bot.default_prefix)
         self.config_service = ConfigurationService(default_prefix=bot.default_prefix)
+        self.events = EventLogService(default_prefix=bot.default_prefix)
 
     # --- Shared helpers ---
 
@@ -115,6 +117,14 @@ class ModerationCog(commands.Cog, name="Moderation"):
         duration_seconds: int | None = None,
         infraction_id: int | None = None,
     ) -> None:
+        # Every moderation action funnels through here (including unban and
+        # automatic escalation), which makes it the one place to feed the
+        # dashboard's activity feed - regardless of whether a mod-log
+        # channel is configured.
+        case = f"#{infraction_id} " if infraction_id is not None else ""
+        await self.events.record(
+            guild.id, EventTag.MOD, f"{case}{action} @{target} by @{moderator} · {reason}"
+        )
         try:
             config = await self.config_service.get_config(guild.id)
         except Exception:

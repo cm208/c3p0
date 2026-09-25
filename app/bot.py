@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import traceback
+from datetime import UTC, datetime
 
 import discord
 import uvicorn
@@ -87,6 +89,10 @@ class C3P0Bot(commands.Bot):
             help_command=commands.DefaultHelpCommand(),
         )
         self.app_config = config
+        # Read by {uptime} in message templates and the dashboard's status
+        # bar / UPTIME tile (via the internal API's /status).
+        self.started_monotonic = time.monotonic()
+        self.started_at = datetime.now(UTC)
         self.default_prefix = config.default_prefix
         # Simple per-process cache of guild_id -> prefix, invalidated by the
         # admin cog whenever /config prefix changes.

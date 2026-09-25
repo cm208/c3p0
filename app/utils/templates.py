@@ -16,22 +16,25 @@ or leaves the text untouched.
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
 # The fixed variable set both welcome messages and custom commands render
-# against - {user}, {user_mention}, {user_id}, {server}, {member_count},
-# {channel}, {channel_mention}.
+# against - {user}, {user_mention}, {user_id}, {server}, {member_count}
+# (and its short alias {count}), {channel}, {channel_mention}, {uptime}.
 STANDARD_VARIABLES = {
     "user",
     "user_mention",
     "user_id",
     "server",
     "member_count",
+    "count",
     "channel",
     "channel_mention",
+    "uptime",
 }
 
 
@@ -50,6 +53,9 @@ class TemplateContext:
     member_count: int
     channel_name: str = ""
     channel_mention: str = ""
+    # Pre-formatted by format_uptime(); empty when the caller has no bot
+    # start time to measure from.
+    uptime: str = ""
 
 
 def context_variables(context: TemplateContext) -> dict[str, str]:
@@ -59,9 +65,24 @@ def context_variables(context: TemplateContext) -> dict[str, str]:
         "user_id": str(context.user_id),
         "server": context.guild_name,
         "member_count": str(context.member_count),
+        "count": str(context.member_count),
         "channel": context.channel_name,
         "channel_mention": context.channel_mention,
+        "uptime": context.uptime,
     }
+
+
+def format_uptime(seconds: float) -> str:
+    """Compact uptime for templates and the dashboard: "14d 6h", "3h 12m", "5m"."""
+    total = max(0, int(seconds))
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
 
 
 class UnknownTemplateVariableError(Exception):
@@ -98,3 +119,11 @@ def render_template(template: str, variables: Mapping[str, str]) -> str:
 def render_template_context(template: str, context: TemplateContext) -> str:
     """Convenience: render `template` against a TemplateContext's standard variables."""
     return render_template(template, context_variables(context))
+
+
+def uptime_since(started_monotonic: float | None) -> str:
+    """format_uptime() measured from a time.monotonic() start, or "" when
+    there's no start time (e.g. a test double standing in for the bot)."""
+    if started_monotonic is None:
+        return ""
+    return format_uptime(time.monotonic() - started_monotonic)

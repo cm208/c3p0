@@ -18,10 +18,13 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app import __version__
 from app.web.config import WebConfig
 from app.web.formatting import format_duration, progress_percent
+from app.web.message_editor import ALL_VARIABLES, DM_VARIABLES
 from app.web.routers import (
     auth,
+    console,
     custom_commands,
     dashboard,
     general,
@@ -71,6 +74,9 @@ def create_app(
     app.state.templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
     app.state.templates.env.filters["duration"] = format_duration
     app.state.templates.env.globals["progress_percent"] = progress_percent
+    app.state.templates.env.globals["app_version"] = __version__
+    # data-variables values for message_editor.js textareas (see app/web/message_editor.py).
+    app.state.templates.env.globals["editor_variables"] = {"all": ALL_VARIABLES, "dm": DM_VARIABLES}
     # One value per process start, appended as ?v=... on every static asset
     # URL (see base.html/music.html) - forces browsers to fetch fresh
     # style.css/music.js on the very next page load after a deploy, instead
@@ -94,6 +100,7 @@ def create_app(
 
     app.include_router(dashboard.router)
     app.include_router(auth.router)
+    app.include_router(console.router)
     app.include_router(general.router)
     app.include_router(welcome.router)
     app.include_router(music.router)

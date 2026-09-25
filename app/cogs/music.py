@@ -156,6 +156,7 @@ class MusicCog(commands.Cog, name="Music"):
                 await ctx.send("⚠️ Nothing to play.")
         else:
             await ctx.send(f"➕ Queued **{track.title}** (position {position}) — requested by {ctx.author.mention}.")
+        await self.service.record_event(ctx.guild.id, f'queued "{track.title}" by @{ctx.author}')
 
     @commands.command(name="pause")
     @commands.guild_only()
@@ -210,6 +211,7 @@ class MusicCog(commands.Cog, name="Music"):
         player.stop()
         self._update_queue_metric(ctx.guild.id)
         await ctx.send("⏹️ Stopped and cleared the queue.")
+        await self.service.record_event(ctx.guild.id, f"stopped · queue cleared by @{ctx.author}")
 
     @commands.command(name="queue")
     @commands.guild_only()

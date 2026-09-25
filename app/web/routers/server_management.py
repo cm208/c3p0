@@ -21,21 +21,27 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 
 import discord
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 
 from app.db.models.audit_log_entry import AuditAction, AuditTargetType
 from app.services.audit_log_service import AuditLogService
+from app.services.event_log_service import EventLogService
 from app.services.template_service import TemplateService, TemplateValidationError
 from app.utils.permissions import has_all_permission_bits
+from app.utils.templates import format_uptime
+from app.web.bot_client import BotStatusView
 from app.web.csrf import require_csrf
 from app.web.dependencies import require_guild_access
 from app.web.discord_client import (
     CATEGORY_CHANNEL_TYPE,
     DiscordAPIError,
     DiscordChannelDetail,
+    DiscordGuildCounts,
     DiscordRoleDetail,
     bot_top_role_position,
     bulk_edit_role_positions,
@@ -44,10 +50,12 @@ from app.web.discord_client import (
     edit_guild_role,
     fetch_bot_role_ids,
     fetch_guild_channels_detailed,
+    fetch_guild_counts,
     fetch_guild_roles_detailed,
 )
 from app.web.guild_options import guild_page_context
 from app.web.permission_groups import CHANNEL_OVERWRITE_PERMISSIONS, PERMISSION_GROUPS
+from app.web.routers.console import load_bot_status
 from app.web.server_management import (
     CanvasBatchValidationError,
     RoleReorderValidationError,
@@ -466,13 +474,68 @@ def _role_to_canvas_dict(role: DiscordRoleDetail) -> dict:
     return {"id": str(role.id), "name": role.name, "managed": role.managed}
 
 
+async def _load_guild_counts(request: Request, guild_id: int) -> DiscordGuildCounts | None:
+    config = request.app.state.web_config
+    try:
+        return await fetch_guild_counts(request.app.state.http_client, config.discord_bot_token, guild_id)
+    except (DiscordAPIError, httpx.HTTPError):
+        return None
+
+
+def _server_stat_tiles(
+    channels: list[DiscordChannelDetail],
+    counts: DiscordGuildCounts | None,
+    status: BotStatusView | None,
+    net_joins: int,
+) -> list[dict]:
+    """MEMBERS / ONLINE / CHANNELS / UPTIME tiles on the Server page. Any
+    value that couldn't be fetched renders as "--" rather than a fake 0."""
+    categories = sum(1 for c in channels if c.type == CATEGORY_CHANNEL_TYPE)
+    tiles = [
+        {
+            "label": "MEMBERS",
+            "value": f"{counts.member_count:,}" if counts else "--",
+            "sub": f"NET {net_joins:+d} THIS WEEK",
+        },
+        {
+            "label": "ONLINE",
+            "value": f"{counts.presence_count:,}" if counts else "--",
+            "sub": f"{round(100 * counts.presence_count / counts.member_count)}% ACTIVE"
+            if counts and counts.member_count
+            else "--",
+        },
+        {
+            "label": "CHANNELS",
+            "value": f"{len(channels) - categories:02d}" if channels else "--",
+            "sub": f"{categories} CATEGOR{'Y' if categories == 1 else 'IES'}",
+        },
+    ]
+    if status is not None and status.uptime_seconds is not None:
+        restarted = datetime.fromisoformat(status.started_at).strftime("%m/%d") if status.started_at else "--"
+        tiles.append(
+            {
+                "label": "UPTIME",
+                "value": format_uptime(status.uptime_seconds).replace(" ", ""),
+                "sub": f"LAST RESTART {restarted}",
+            }
+        )
+    else:
+        tiles.append({"label": "UPTIME", "value": "--", "sub": "BOT UNREACHABLE"})
+    return tiles
+
+
 @router.get("/guilds/{guild_id}/server-management/channels")
 async def channel_canvas_view(
     request: Request,
     guild_id: int,
     session: LoadedSession = Depends(require_guild_access),
 ) -> Response:
-    channels, roles = await _load_channel_state(request, guild_id)
+    (channels, roles), counts, status, net_joins = await asyncio.gather(
+        _load_channel_state(request, guild_id),
+        _load_guild_counts(request, guild_id),
+        load_bot_status(request),
+        EventLogService().net_joins_since(guild_id),
+    )
 
     context = await guild_page_context(guild_id, session, "server-management")
     context.update(
@@ -485,6 +548,7 @@ async def channel_canvas_view(
             "permission_bit_values": {flag: _permission_bits({flag}) for flag in CHANNEL_OVERWRITE_PERMISSIONS},
             "operator_permissions": sorted(_permission_names(session.guild_permissions.get(guild_id, 0))),
             "apply_url": f"/guilds/{guild_id}/server-management/channels/canvas/apply",
+            "stat_tiles": _server_stat_tiles(channels, counts, status, net_joins),
         }
     )
     return request.app.state.templates.TemplateResponse(request, "server_management_channel_canvas.html", context)

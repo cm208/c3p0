@@ -1,51 +1,58 @@
 {% extends "server_management_base.html" %}
-{% block title %}{% if role %}Edit Role{% else %}New Role{% endif %} - Server Management - C3P0 Dashboard{% endblock %}
-{% block sm_title %}{% if role %}Edit Role{% else %}New Role{% endif %}{% endblock %}
+{% block title %}{% if role %}Edit Role{% else %}New Role{% endif %} - Server - C3P0 Console{% endblock %}
+{% block sm_title %}{% if role %}EDIT ROLE{% else %}NEW ROLE{% endif %}{% endblock %}
 {% block sm_content %}
-<form method="post" action="{{ action_url }}" class="panel-form hud-frame">
+<form method="post" action="{{ action_url }}" class="stack" data-ok="role {{ 'saved' if role else 'created' }}">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
 
-    <div class="field">
-        <label for="name">Name</label>
-        <input type="text" id="name" name="name" maxlength="100" required value="{{ role.name if role else '' }}">
-    </div>
-
-    <div class="field">
-        <label for="color">Color</label>
-        <input type="color" id="color_picker" value="#{{ '%06x' % (role.color if role else 0) }}"
-               oninput="document.getElementById('color').value = parseInt(this.value.slice(1), 16)">
-        <input type="hidden" id="color" name="color" value="{{ role.color if role else 0 }}">
-        <p class="field-hint">0 leaves the role uncolored (matches @everyone).</p>
-    </div>
-
-    <div class="field-toggle">
-        <input type="checkbox" id="hoist" name="hoist" {% if role and role.hoist %}checked{% endif %}>
-        <label for="hoist">Display separately in the member list</label>
-    </div>
-
-    <div class="field-toggle">
-        <input type="checkbox" id="mentionable" name="mentionable" {% if role and role.mentionable %}checked{% endif %}>
-        <label for="mentionable">Anyone can @mention this role</label>
-    </div>
-
-    <span class="eyebrow">Permissions</span>
-    <p class="field-hint">You can only grant permissions you hold yourself in this server.</p>
-    {% for group_name, flags in permission_groups.items() %}
-    <fieldset>
-        <legend>{{ group_name }}</legend>
-        {% for flag in flags %}
-        {% set already_granted = flag in checked_permissions %}
-        {% set locked = flag not in operator_permissions and not already_granted %}
-        <div class="field-toggle">
-            <input type="checkbox" id="perm_{{ flag }}" name="permissions" value="{{ flag }}"
-                   {% if already_granted %}checked{% endif %}
-                   {% if locked %}disabled{% endif %}>
-            <label for="perm_{{ flag }}">{{ flag | replace("_", " ") | capitalize }}{% if locked %} (you don't hold this){% endif %}</label>
+    <section class="frame">
+        <span class="frame-label">[ IDENTITY ]</span>
+        <div class="field">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" maxlength="100" required value="{{ role.name if role else '' }}">
         </div>
-        {% endfor %}
-    </fieldset>
-    {% endfor %}
 
-    <button type="submit">{% if role %}Save{% else %}Create{% endif %}</button>
+        <div class="field">
+            <label for="color_picker">Color</label>
+            <input type="color" id="color_picker" value="#{{ '%06x' % (role.color if role else 0) }}"
+                   oninput="document.getElementById('color').value = parseInt(this.value.slice(1), 16)">
+            <input type="hidden" id="color" name="color" value="{{ role.color if role else 0 }}">
+            <p class="field-hint">#000000 leaves the role uncolored (matches @everyone). This is Discord's colour, the one place a second hue appears.</p>
+        </div>
+
+        <div class="field-toggle">
+            <input type="checkbox" id="hoist" name="hoist" {% if role and role.hoist %}checked{% endif %}>
+            <label for="hoist">Display separately in the member list</label>
+        </div>
+
+        <div class="field-toggle">
+            <input type="checkbox" id="mentionable" name="mentionable" {% if role and role.mentionable %}checked{% endif %}>
+            <label for="mentionable">Anyone can @mention this role</label>
+        </div>
+    </section>
+
+    <p class="field-hint">You can only grant permissions you hold yourself in this server.</p>
+    <div class="grid-2">
+        {% for group_name, flags in permission_groups.items() %}
+        <fieldset class="frame">
+            <legend class="frame-label">[ {{ group_name | upper }} ]</legend>
+            {% for flag in flags %}
+            {% set already_granted = flag in checked_permissions %}
+            {% set locked = flag not in operator_permissions and not already_granted %}
+            <div class="field-toggle">
+                <input type="checkbox" id="perm_{{ flag }}" name="permissions" value="{{ flag }}"
+                       {% if already_granted %}checked{% endif %}
+                       {% if locked %}disabled{% endif %}>
+                <label for="perm_{{ flag }}">{{ flag | replace("_", " ") }}{% if locked %} (you don't hold this){% endif %}</label>
+            </div>
+            {% endfor %}
+        </fieldset>
+        {% endfor %}
+    </div>
+
+    <div class="actions">
+        <button type="submit">{% if role %}[ SAVE ROLE ]{% else %}[ CREATE ]{% endif %}</button>
+        <a class="button secondary" href="/guilds/{{ guild_id }}/server-management/roles">[ CANCEL ]</a>
+    </div>
 </form>
 {% endblock %}

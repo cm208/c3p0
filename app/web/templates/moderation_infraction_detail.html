@@ -1,45 +1,42 @@
 {% extends "guild_base.html" %}
-{% block title %}Infraction CASE-{{ infraction.id }} - Moderation - C3P0 Dashboard{% endblock %}
+{% block title %}Case #{{ infraction.id }} - Moderation - C3P0 Console{% endblock %}
 {% block guild_content %}
-<span class="eyebrow">Moderation</span>
-<h1>Infraction <span class="system-id">CASE-{{ infraction.id }}</span></h1>
-<a class="button secondary" href="/guilds/{{ guild_id }}/moderation">Back to Moderation</a>
+<div class="stack">
+<div>
+    <h1 class="page-title">CASE #{{ infraction.id }}</h1>
+    <a class="dim" href="/guilds/{{ guild_id }}/moderation">&#9668; BACK TO MOD.LOG</a>
+</div>
 
-<ul class="item-list">
-    <li class="item-row hud-frame">
-        <div class="item-main">
-            <span class="item-title">
-                <span class="badge {% if infraction.type in ('kick', 'ban') %}danger{% elif infraction.type == 'timeout' %}partial{% else %}off{% endif %}">{{ infraction.type }}</span>
-                {% if not infraction.active %}<span class="badge off">Resolved</span>{% endif %}
-            </span>
-            <span class="item-meta">
-                User: {{ member_names.get(infraction.user_id, infraction.user_id) }} (<span class="system-id">{{ infraction.user_id }}</span>)
-            </span>
-            <span class="item-meta">
-                Moderator: {{ member_names.get(infraction.moderator_id, infraction.moderator_id) }} (<span class="system-id">{{ infraction.moderator_id }}</span>)
-            </span>
-            <span class="item-meta">Logged: {{ infraction.created_at.strftime("%Y-%m-%d %H:%M") }}</span>
-            {% if infraction.duration_seconds %}<span class="item-meta">Duration: {{ infraction.duration_seconds }}s</span>{% endif %}
-            {% if infraction.expires_at %}<span class="item-meta">Expires: {{ infraction.expires_at.strftime("%Y-%m-%d %H:%M") }}</span>{% endif %}
-        </div>
-    </li>
-</ul>
+<section class="frame">
+    <span class="frame-label">[ CASE FILE ]</span>
+    <dl class="kv">
+        <dt>Case</dt><dd>#{{ infraction.id }}</dd>
+        <dt>Action</dt><dd><span class="badge {% if infraction.type in ('kick', 'ban') %}hard{% endif %}">{{ infraction.type }}</span></dd>
+        <dt>State</dt><dd>{{ "ACTIVE" if infraction.active else "RESOLVED" }}</dd>
+        <dt>User</dt><dd>{{ member_names.get(infraction.user_id, infraction.user_id) }} <span class="dim">({{ infraction.user_id }})</span></dd>
+        <dt>By</dt><dd>{{ member_names.get(infraction.moderator_id, infraction.moderator_id) }} <span class="dim">({{ infraction.moderator_id }})</span></dd>
+        <dt>Logged</dt><dd>{{ infraction.created_at.strftime("%Y-%m-%d %H:%M") }}</dd>
+        {% if infraction.duration_seconds %}<dt>Duration</dt><dd>{{ infraction.duration_seconds | duration }}</dd>{% endif %}
+        {% if infraction.expires_at %}<dt>Expires</dt><dd>{{ infraction.expires_at.strftime("%Y-%m-%d %H:%M") }}</dd>{% endif %}
+    </dl>
+</section>
 
-<span class="eyebrow">Reason</span>
-<form method="post" action="/guilds/{{ guild_id }}/moderation/infractions/{{ infraction.id }}/reason" class="panel-form hud-frame">
+<form method="post" action="/guilds/{{ guild_id }}/moderation/infractions/{{ infraction.id }}/reason" class="frame panel-form" data-ok="case #{{ infraction.id }} reason saved">
+    <span class="frame-label">[ REASON ]</span>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <div class="field">
-        <label for="reason">Reason</label>
+    <div class="field stacked">
+        <label for="reason" class="sr-only">Reason</label>
         <textarea id="reason" name="reason" maxlength="512" rows="3">{{ infraction.reason or "" }}</textarea>
     </div>
-    <button type="submit">Save Reason</button>
+    <button type="submit">[ SAVE REASON ]</button>
 </form>
 
-<form method="post" action="/guilds/{{ guild_id }}/moderation/infractions/{{ infraction.id }}/delete" class="panel-form hud-frame"
-      data-confirm="Delete this infraction? This permanently removes it from the log and cannot be undone.">
-    <p class="field-hint">Permanently removes this infraction from the log. This can't be undone.</p>
+<form method="post" action="/guilds/{{ guild_id }}/moderation/infractions/{{ infraction.id }}/delete" class="frame panel-form"
+      data-confirm="rm case #{{ infraction.id }} · THIS CANNOT BE UNDONE. PROCEED?" data-ok="case #{{ infraction.id }} deleted">
+    <span class="frame-label">[ DELETE ]</span>
+    <p class="field-hint">Permanently removes this case from the log. This can't be undone.</p>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <button type="submit" class="danger">Delete Infraction</button>
+    <button type="submit" class="danger">[DEL]ETE CASE</button>
 </form>
-<script src="/static/confirm.js?v={{ asset_version }}" defer></script>
+</div>
 {% endblock %}

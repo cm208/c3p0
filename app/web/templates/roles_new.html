@@ -1,43 +1,48 @@
 {% extends "guild_base.html" %}
-{% block title %}New {{ binding_type|capitalize }} Role - C3P0 Dashboard{% endblock %}
+{% block title %}New {{ binding_type|capitalize }} Role - C3P0 Console{% endblock %}
 {% block guild_content %}
-<span class="eyebrow">Self-Assignable Roles</span>
-<h1>New {{ binding_type }} role</h1>
+<div class="stack">
+<div>
+    <h1 class="page-title">NEW {{ binding_type | upper }} ROLE</h1>
+    <a class="dim" href="/guilds/{{ guild_id }}/roles">&#9668; REACTION ROLES</a>
+</div>
 
-<form method="post" action="/guilds/{{ guild_id }}/roles" class="panel-form hud-frame">
+<form method="post" action="/guilds/{{ guild_id }}/roles" class="frame panel-form" data-ok="{{ binding_type }} role posted">
+    <span class="frame-label">[ {{ binding_type | upper }} ROLE ]</span>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <input type="hidden" name="type" value="{{ binding_type }}">
 
     <div class="field">
         <label for="channel_id">Channel</label>
-        <select id="channel_id" name="channel_id" required>
-            <option value="">Select a channel&hellip;</option>
+        <span class="select-wrap"><select id="channel_id" name="channel_id" required>
+            <option value="">SELECT A CHANNEL&hellip;</option>
             {% for channel in text_channels %}
             <option value="{{ channel.id }}">#{{ channel.name }}</option>
             {% endfor %}
-        </select>
+        </select></span>
     </div>
 
     <div class="field">
         <label for="role_id">Role</label>
-        <select id="role_id" name="role_id" required>
-            <option value="">Select a role&hellip;</option>
+        <span class="select-wrap"><select id="role_id" name="role_id" required>
+            <option value="">SELECT A ROLE&hellip;</option>
             {% for role in assignable_roles %}
             <option value="{{ role.id }}">{{ role.name }}</option>
             {% endfor %}
-        </select>
+        </select></span>
         <p class="field-hint">Only roles below C3P0's own highest role are shown.</p>
     </div>
 
-    <div class="field">
+    <div class="field stacked">
         <label for="message">Message</label>
-        <textarea id="message" name="message" maxlength="2000">{{ default_message }}</textarea>
+        <textarea id="message" name="message" maxlength="2000" rows="6"
+            data-message-editor data-preview-label="chosen channel">{{ default_message }}</textarea>
     </div>
 
     {% if binding_type in ("reaction", "button") %}
     <div class="field">
         <label for="emoji">Emoji{% if binding_type == "button" %} (optional){% endif %}</label>
-        <input type="text" id="emoji" name="emoji" placeholder="🎮">
+        <input type="text" id="emoji" name="emoji" placeholder="🎮" style="width: 120px;">
         <p class="field-hint">Unicode or a custom server emoji.</p>
     </div>
     {% endif %}
@@ -51,11 +56,13 @@
 
     {% if binding_type == "select" %}
     <div class="field">
-        <label for="placeholder">Placeholder text</label>
+        <label for="placeholder">Placeholder</label>
         <input type="text" id="placeholder" name="placeholder" value="{{ default_placeholder }}" maxlength="150">
     </div>
     {% endif %}
 
-    <button type="submit">Create</button>
+    <button type="submit">[ CREATE ]</button>
 </form>
+</div>
 {% endblock %}
+{% block page_scripts %}{% include "_message_editor.html" %}{% endblock %}

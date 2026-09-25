@@ -1,66 +1,54 @@
 {% extends "guild_base.html" %}
-{% block title %}Custom Commands - C3P0 Dashboard{% endblock %}
+{% block title %}Custom Commands - C3P0 Console{% endblock %}
 {% block guild_content %}
-<span class="eyebrow">Command Registry</span>
-<h1>Custom Commands</h1>
+<div class="stack">
+<h1 class="page-title">CUSTOM COMMANDS</h1>
 
-{% if commands %}
-<div class="stat-row">
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ commands | length }}</span>
-        <span class="stat-label">Total Commands</span>
-    </div>
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ commands | selectattr("enabled") | list | length }}</span>
-        <span class="stat-label">Enabled</span>
-    </div>
-</div>
-{% endif %}
-
-<ul class="item-list">
+<section class="frame" style="padding: 22px 10px 10px;">
+    <span class="frame-label">[ {{ commands | length }} REGISTERED ]</span>
     {% for command in commands %}
-    <li class="item-row hud-frame">
-        <div class="item-main">
-            <a class="item-title" href="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}">{{ command.trigger }}</a>
-            <span class="item-meta">
-                {{ command.name }} &middot; {{ command.restriction_type }}{% if command.cooldown_type != "none" %} &middot; {{ command.cooldown_seconds }}s cooldown{% endif %}
-            </span>
-        </div>
-        <div class="item-actions">
-            <span class="badge {% if command.enabled %}on{% else %}off{% endif %}">{{ "ON" if command.enabled else "OFF" }}</span>
-            <a class="button secondary" href="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}">Edit</a>
-            <form method="post" action="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}/delete">
-                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                <button type="submit" class="danger">Delete</button>
-            </form>
-        </div>
-    </li>
+    <div class="cmd-row {% if not command.enabled %}is-off{% endif %}">
+        <span>
+            <a class="trigger" href="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}" title="Edit {{ command.trigger }}">{{ command.trigger }}</a>
+            {% if command.name != command.trigger %}<br><span class="dim small">{{ command.name }}</span>{% endif %}
+        </span>
+        <span class="response">{{ command.response }}</span>
+        <span class="uses">{{ "{:,}".format(command.use_count) }}&times;</span>
+        <form method="post" action="/guilds/{{ guild_id }}/custom-commands/{{ command.trigger | urlencode }}/delete" class="inline"
+              data-confirm="rm {{ command.trigger }} · THIS CANNOT BE UNDONE. PROCEED?" data-ok="command {{ command.trigger }} removed">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <button type="submit" class="ghost-btn danger" aria-label="Delete {{ command.trigger }}">[DEL]</button>
+        </form>
+    </div>
     {% else %}
-    <li class="empty-state">No custom commands yet - add one below.</li>
+    <p class="empty-state">No custom commands yet - register one below.</p>
     {% endfor %}
-</ul>
+</section>
 
-<span class="eyebrow">New Command</span>
-<form method="post" action="/guilds/{{ guild_id }}/custom-commands" class="panel-form hud-frame">
+<form method="post" action="/guilds/{{ guild_id }}/custom-commands" class="frame panel-form" data-ok="command registered">
+    <span class="frame-label">[ NEW COMMAND ]</span>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
 
     <div class="field">
-        <label for="name">Name</label>
-        <input type="text" id="name" name="name" value="{{ form_name or '' }}" maxlength="64" required>
-    </div>
-
-    <div class="field">
         <label for="trigger">Trigger</label>
-        <input type="text" id="trigger" name="trigger" value="{{ form_trigger or '' }}" maxlength="80" required>
-        <p class="field-hint">Include the prefix, e.g. <code>!rules</code>. No spaces.</p>
+        <input type="text" id="trigger" name="trigger" value="{{ form_trigger or '' }}" maxlength="80" required placeholder="!command" style="width: 240px;">
+        <p class="field-hint">What users type. The server's prefix is added if you leave it off. No spaces.</p>
     </div>
 
     <div class="field">
-        <label for="response">Response</label>
-        <textarea id="response" name="response" maxlength="2000" required>{{ form_response or "" }}</textarea>
-        <p class="field-hint">Variables: {user}, {user_mention}, {user_id}, {server}, {member_count}.</p>
+        <label for="name">Name</label>
+        <input type="text" id="name" name="name" value="{{ form_name or '' }}" maxlength="64" placeholder="optional label">
     </div>
 
-    <button type="submit">Create</button>
+    <div class="field stacked">
+        <label for="response">Response</label>
+        <textarea id="response" name="response" maxlength="2000" rows="4" required placeholder="What C3P0 says back"
+            data-message-editor data-variables="{{ editor_variables.all }}" data-preview-label="#channel it's used in">{{ form_response or "" }}</textarea>
+        <p class="field-hint">TOKENS: {user} {user_mention} {user_id} {server} {count} {channel} {channel_mention} {uptime}.</p>
+    </div>
+
+    <button type="submit">[ REGISTER ]</button>
 </form>
+</div>
 {% endblock %}
+{% block page_scripts %}{% include "_message_editor.html" %}{% endblock %}

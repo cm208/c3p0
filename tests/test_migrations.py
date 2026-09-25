@@ -42,3 +42,16 @@ def test_run_migrations_does_not_disable_other_loggers(_sqlite_url: str) -> None
     run_migrations(_sqlite_url)
 
     assert unrelated_logger.disabled is False
+
+
+def test_migration_0006_adds_event_table_and_use_count(_sqlite_url: str, tmp_path: Path) -> None:
+    import sqlite3
+
+    run_migrations(_sqlite_url)
+
+    with sqlite3.connect(tmp_path / "migrations.db") as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        command_columns = {row[1] for row in conn.execute("PRAGMA table_info(custom_command)")}
+
+    assert "guild_event" in tables
+    assert "use_count" in command_columns

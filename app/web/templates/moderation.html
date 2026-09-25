@@ -1,130 +1,55 @@
 {% extends "guild_base.html" %}
-{% block title %}Moderation - C3P0 Dashboard{% endblock %}
+{% block title %}Moderation - C3P0 Console{% endblock %}
+{% macro action_badge(infraction) -%}
+<span class="badge {% if infraction.type in ('kick', 'ban') %}hard{% endif %}">{{ infraction.type }}</span>
+{%- endmacro %}
 {% block guild_content %}
-<span class="eyebrow">Enforcement</span>
-<h1>Moderation</h1>
-
-<div class="stat-row">
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ total_infractions }}</span>
-        <span class="stat-label">Infractions Logged</span>
-    </div>
-    <div class="stat-tile hud-frame">
-        <span class="stat-value">{{ sorted_thresholds | length }}</span>
-        <span class="stat-label">Escalation Thresholds</span>
-    </div>
+<div class="stack">
+<div class="spread">
+    <h1 class="page-title">MOD.LOG</h1>
+    <nav class="chips" aria-label="Filter by action">
+        {% for chip in type_chips %}
+        <a class="chip {% if chip.active %}is-active{% endif %}" href="{{ chip.href }}" {% if chip.active %}aria-current="true"{% endif %}>{{ chip.label }} <span class="count">{{ chip.count }}</span></a>
+        {% endfor %}
+    </nav>
 </div>
 
-<form method="post" action="/guilds/{{ guild_id }}/moderation" class="panel-form hud-frame">
-    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-
-    <div class="field">
-        <label for="moderation_log_channel_id">Moderation log channel</label>
-        <select id="moderation_log_channel_id" name="moderation_log_channel_id">
-            <option value="">Not set</option>
-            {% set text_channel_ids = text_channels | map(attribute="id") | list %}
-            {% if guild_config.moderation_log_channel_id and guild_config.moderation_log_channel_id not in text_channel_ids %}
-            <option value="{{ guild_config.moderation_log_channel_id }}" selected>
-                Currently set to {{ guild_config.moderation_log_channel_id }} (channel not found)
-            </option>
-            {% endif %}
-            {% for channel in text_channels %}
-            <option value="{{ channel.id }}" {% if guild_config.moderation_log_channel_id == channel.id %}selected{% endif %}>#{{ channel.name }}</option>
-            {% endfor %}
-        </select>
-        <p class="field-hint">Warns, kicks, bans, and timeouts are logged here. Separate from the General log channel.</p>
-    </div>
-
-    <div class="field-toggle">
-        <input type="checkbox" id="escalation_enabled" name="escalation_enabled" {% if mod_config.escalation_enabled %}checked{% endif %}>
-        <label for="escalation_enabled">Automatically escalate on repeated warnings</label>
-    </div>
-
-    <button type="submit">Apply</button>
-</form>
-
-<span class="eyebrow">Escalation Thresholds</span>
-<ul class="item-list">
-    {% for warnings, action in sorted_thresholds %}
-    <li class="item-row hud-frame">
-        <div class="item-main">
-            <span class="item-title">{{ warnings }} warning{{ "s" if warnings != 1 else "" }} &rarr; {{ action }}</span>
-        </div>
-        <div class="item-actions">
-            <form method="post" action="/guilds/{{ guild_id }}/moderation/thresholds/{{ warnings }}/delete">
-                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                <button type="submit" class="danger">Remove</button>
-            </form>
-        </div>
-    </li>
-    {% else %}
-    <li class="empty-state">No escalation thresholds configured.</li>
-    {% endfor %}
-</ul>
-
-<form method="post" action="/guilds/{{ guild_id }}/moderation/thresholds" class="panel-form hud-frame">
-    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-
-    <div class="field">
-        <label for="warnings">Warning count</label>
-        <input type="number" id="warnings" name="warnings" min="1" required>
-    </div>
-
-    <div class="field">
-        <label for="action">Action</label>
-        <select id="action" name="action">
-            {% for choice in escalation_actions %}
-            <option value="{{ choice.value }}">{{ choice.value }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <button type="submit">Add Threshold</button>
-</form>
-
-<span class="eyebrow">Infraction Log</span>
-<form method="get" action="/guilds/{{ guild_id }}/moderation" class="filter-bar hud-frame">
+<form method="get" action="/guilds/{{ guild_id }}/moderation" class="filter-bar">
     <input type="hidden" name="sort" value="{{ filters.sort }}">
     <input type="hidden" name="dir" value="{{ filters.dir }}">
+    {% if filters.type %}<input type="hidden" name="type" value="{{ filters.type }}">{% endif %}
     <div class="field">
         <label for="q">Search</label>
-        <input type="text" id="q" name="q" placeholder="Reason or a Discord ID" value="{{ filters.q }}">
-    </div>
-    <div class="field">
-        <label for="type">Type</label>
-        <select id="type" name="type">
-            <option value="">All</option>
-            {% for t in all_infraction_types %}
-            <option value="{{ t.value }}" {% if filters.type == t.value %}selected{% endif %}>{{ t.value }}</option>
-            {% endfor %}
-        </select>
+        <input type="text" id="q" name="q" placeholder="reason or a discord id" value="{{ filters.q }}">
     </div>
     <div class="field">
         <label for="state">State</label>
-        <select id="state" name="state">
-            <option value="">All</option>
-            <option value="active" {% if filters.state == "active" %}selected{% endif %}>Active</option>
-            <option value="resolved" {% if filters.state == "resolved" %}selected{% endif %}>Resolved</option>
-        </select>
+        <span class="select-wrap"><select id="state" name="state">
+            <option value="">ALL</option>
+            <option value="active" {% if filters.state == "active" %}selected{% endif %}>ACTIVE</option>
+            <option value="resolved" {% if filters.state == "resolved" %}selected{% endif %}>RESOLVED</option>
+        </select></span>
     </div>
-    <div class="filter-bar-actions">
-        <button type="submit">Filter</button>
+    <div class="actions">
+        <button type="submit" class="secondary">[ FILTER ]</button>
         {% if filters.q or filters.type or filters.state %}
-        <a class="button secondary" href="/guilds/{{ guild_id }}/moderation">Clear</a>
+        <a class="button ghost-btn" href="/guilds/{{ guild_id }}/moderation">[ CLEAR ]</a>
         {% endif %}
     </div>
 </form>
 
 {% macro sort_arrow(column) %}{% if filters.sort == column %} {{ "▲" if filters.dir == "asc" else "▼" }}{% endif %}{% endmacro %}
-<div class="table-wrap hud-frame">
+<section class="frame" style="padding: 22px 10px 10px;">
+    <span class="frame-label">[ {{ total_infractions }} ENTR{{ "Y" if total_infractions == 1 else "IES" }} ]</span>
+    <div class="table-wrap">
     <table class="data-table">
         <thead>
             <tr>
-                <th><a href="{{ sort_links.created_at }}" class="{% if filters.sort == 'created_at' %}is-active{% endif %}">Time{{ sort_arrow("created_at") }}</a></th>
-                <th><a href="{{ sort_links.type }}" class="{% if filters.sort == 'type' %}is-active{% endif %}">Type{{ sort_arrow("type") }}</a></th>
                 <th>Case</th>
+                <th><a href="{{ sort_links.created_at }}" class="{% if filters.sort == 'created_at' %}is-active{% endif %}">Time{{ sort_arrow("created_at") }}</a></th>
+                <th><a href="{{ sort_links.type }}" class="{% if filters.sort == 'type' %}is-active{% endif %}">Action{{ sort_arrow("type") }}</a></th>
                 <th>User</th>
-                <th>Moderator</th>
+                <th>By</th>
                 <th>Reason</th>
                 <th><a href="{{ sort_links.active }}" class="{% if filters.sort == 'active' %}is-active{% endif %}">State{{ sort_arrow("active") }}</a></th>
             </tr>
@@ -132,35 +57,91 @@
         <tbody>
             {% for infraction in infractions %}
             <tr>
-                <td>{{ infraction.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>
-                    <span class="badge {% if infraction.type in ('kick', 'ban') %}danger{% elif infraction.type == 'timeout' %}partial{% else %}off{% endif %}">{{ infraction.type }}</span>
-                    {%- if infraction.duration_seconds %}<span class="item-meta">{{ infraction.duration_seconds }}s</span>{% endif -%}
-                </td>
-                <td><a class="system-id" href="/guilds/{{ guild_id }}/moderation/infractions/{{ infraction.id }}">CASE-{{ infraction.id }}</a></td>
+                <td class="dim"><a href="/guilds/{{ guild_id }}/moderation/infractions/{{ infraction.id }}">#{{ infraction.id }}</a></td>
+                <td class="dim num">{{ infraction.created_at.strftime("%m/%d %H:%M") }}</td>
+                <td>{{ action_badge(infraction) }}{% if infraction.duration_seconds %} <span class="dim small">{{ infraction.duration_seconds | duration }}</span>{% endif %}</td>
                 <td>{{ member_names.get(infraction.user_id, infraction.user_id) }}</td>
-                <td>{{ member_names.get(infraction.moderator_id, infraction.moderator_id) }}</td>
+                <td class="dim">{{ member_names.get(infraction.moderator_id, infraction.moderator_id) }}</td>
                 <td class="wrap">{{ infraction.reason or "No reason given." }}</td>
-                <td>{% if infraction.active %}<span class="badge on">Active</span>{% else %}<span class="badge off">Resolved</span>{% endif %}</td>
+                <td>{% if infraction.active %}<span class="badge">active</span>{% else %}<span class="badge off">resolved</span>{% endif %}</td>
             </tr>
             {% else %}
             <tr><td colspan="7" class="empty-state">No infractions match these filters.</td></tr>
             {% endfor %}
         </tbody>
     </table>
-</div>
+    </div>
+</section>
 
 <div class="pagination-bar">
     {% if pagination.prev_query is not none %}
-    <a class="button secondary" href="/guilds/{{ guild_id }}/moderation?{{ pagination.prev_query }}">&larr; Prev</a>
+    <a class="button secondary" href="/guilds/{{ guild_id }}/moderation?{{ pagination.prev_query }}">&#9668; PREV</a>
     {% else %}
-    <span class="button secondary is-disabled">&larr; Prev</span>
+    <span class="button secondary is-disabled">&#9668; PREV</span>
     {% endif %}
-    <span class="item-meta">Page {{ pagination.current_page }} of {{ pagination.total_pages }} &middot; {{ total_infractions }} total</span>
+    <span class="dim">PAGE {{ pagination.current_page }} OF {{ pagination.total_pages }} · {{ total_infractions }} TOTAL</span>
     {% if pagination.next_query is not none %}
-    <a class="button secondary" href="/guilds/{{ guild_id }}/moderation?{{ pagination.next_query }}">Next &rarr;</a>
+    <a class="button secondary" href="/guilds/{{ guild_id }}/moderation?{{ pagination.next_query }}">NEXT &#9658;</a>
     {% else %}
-    <span class="button secondary is-disabled">Next &rarr;</span>
+    <span class="button secondary is-disabled">NEXT &#9658;</span>
     {% endif %}
+</div>
+
+<div class="grid-2">
+    <form method="post" action="/guilds/{{ guild_id }}/moderation" class="frame panel-form" data-ok="mod.cfg written">
+        <span class="frame-label">[ CONFIG ]</span>
+        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+        <div class="field stacked">
+            <label for="moderation_log_channel_id">Mod log channel</label>
+            <span class="select-wrap"><select id="moderation_log_channel_id" name="moderation_log_channel_id">
+                <option value="">NOT SET</option>
+                {% set text_channel_ids = text_channels | map(attribute="id") | list %}
+                {% if guild_config.moderation_log_channel_id and guild_config.moderation_log_channel_id not in text_channel_ids %}
+                <option value="{{ guild_config.moderation_log_channel_id }}" selected>
+                    Currently set to {{ guild_config.moderation_log_channel_id }} (channel not found)
+                </option>
+                {% endif %}
+                {% for channel in text_channels %}
+                <option value="{{ channel.id }}" {% if guild_config.moderation_log_channel_id == channel.id %}selected{% endif %}>#{{ channel.name }}</option>
+                {% endfor %}
+            </select></span>
+            <p class="field-hint">Warns, kicks, bans and timeouts are posted here. Separate from the General log channel.</p>
+        </div>
+        <div class="field-toggle">
+            <input type="checkbox" id="escalation_enabled" name="escalation_enabled" {% if mod_config.escalation_enabled %}checked{% endif %}>
+            <label for="escalation_enabled">Auto-escalate repeat warnings</label>
+        </div>
+        <button type="submit">[ WRITE CONFIG ]</button>
+    </form>
+
+    <section class="frame">
+        <span class="frame-label">[ ESCALATION · {{ sorted_thresholds | length }} RULE{{ "S" if sorted_thresholds | length != 1 else "" }} ]</span>
+        <ul class="item-list">
+            {% for warnings, action in sorted_thresholds %}
+            <li class="item-row">
+                <span>{{ warnings }} warning{{ "s" if warnings != 1 else "" }} &rarr; <span class="hot">{{ action }}</span></span>
+                <form method="post" action="/guilds/{{ guild_id }}/moderation/thresholds/{{ warnings }}/delete" class="inline" data-ok="escalation rule removed">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" class="ghost-btn danger">[DEL]</button>
+                </form>
+            </li>
+            {% else %}
+            <li class="empty-state">No escalation thresholds configured.</li>
+            {% endfor %}
+        </ul>
+        <form method="post" action="/guilds/{{ guild_id }}/moderation/thresholds" class="row" style="margin-top: 12px;" data-ok="escalation rule added">
+            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+            <label for="warnings" class="dim">AT</label>
+            <input type="number" id="warnings" name="warnings" min="1" required style="width: 80px;">
+            <label for="action" class="dim">WARNINGS &rarr;</label>
+            <span class="select-wrap"><select id="action" name="action">
+                {% for choice in escalation_actions %}
+                <option value="{{ choice.value }}">{{ choice.value | upper }}</option>
+                {% endfor %}
+            </select></span>
+            <button type="submit" class="secondary">[ ADD ]</button>
+        </form>
+    </section>
+</div>
 </div>
 {% endblock %}

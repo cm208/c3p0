@@ -245,7 +245,13 @@ async def remove_from_queue(
 async def _control(
     request: Request, guild_id: int, session: LoadedSession, action: str
 ) -> Response:
-    call = {"pause": bot_client.pause, "resume": bot_client.resume, "skip": bot_client.skip}[action]
+    call = {
+        "pause": bot_client.pause,
+        "resume": bot_client.resume,
+        "skip": bot_client.skip,
+        "restart": bot_client.restart,
+        "stop": bot_client.stop,
+    }[action]
     config = request.app.state.web_config
     http = request.app.state.bot_http_client
     try:
@@ -287,6 +293,26 @@ async def skip_player(
     _csrf_ok: LoadedSession = Depends(require_csrf),
 ) -> Response:
     return await _control(request, guild_id, session, "skip")
+
+
+@router.post("/guilds/{guild_id}/music/player/restart")
+async def restart_player(
+    request: Request,
+    guild_id: int,
+    session: LoadedSession = Depends(require_guild_access),
+    _csrf_ok: LoadedSession = Depends(require_csrf),
+) -> Response:
+    return await _control(request, guild_id, session, "restart")
+
+
+@router.post("/guilds/{guild_id}/music/player/stop")
+async def stop_player(
+    request: Request,
+    guild_id: int,
+    session: LoadedSession = Depends(require_guild_access),
+    _csrf_ok: LoadedSession = Depends(require_csrf),
+) -> Response:
+    return await _control(request, guild_id, session, "stop")
 
 
 @router.post("/guilds/{guild_id}/music/player/volume")

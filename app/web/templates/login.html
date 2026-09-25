@@ -1,11 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Log in - C3P0 Dashboard{% endblock %}
+{% block title %}Log in - C3P0 Console{% endblock %}
 {% block content %}
-<p class="boot-line"><span class="boot-prompt">&gt;</span> <span class="boot-text">INITIALIZING SECURE UPLINK...</span></p>
-<div class="card hud-frame login-card">
-    <span class="eyebrow">Access Control</span>
-    <h1>C3P0 Dashboard</h1>
-    <p>Authenticate with Discord to manage servers where C3P0 is deployed and you hold Manage Server clearance.</p>
-    <a class="button" href="/auth/login">Authenticate with Discord</a>
+<div class="boot" id="boot">
+    {% for line in boot_lines %}
+    <div class="boot-line">{{ line }}</div>
+    {% endfor %}
+    <div class="boot-final">
+<pre class="ascii-logo" aria-label="C3P0">  ██████╗██████╗ ██████╗  ██████╗
+ ██╔════╝╚════██╗██╔══██╗██╔═████╗
+ ██║      █████╔╝██████╔╝██║██╔██║
+ ██║      ╚═══██╗██╔═══╝ ████╔╝██║
+ ╚██████╗██████╔╝██║     ╚██████╔╝
+  ╚═════╝╚═════╝ ╚═╝      ╚═════╝</pre>
+        <div class="boot-cta">
+            <div class="dim">DISCORD SERVER OPERATOR CONSOLE · AUTHORIZED PERSONNEL ONLY</div>
+            <a class="button" href="/auth/login" id="auth-button">PRESS [ENTER] TO AUTHENTICATE VIA DISCORD</a>
+            <div class="dim small">OAUTH2 · SCOPES: identify guilds · SESSION TIMEOUT {{ session_ttl_days }}D · MANAGE SERVER REQUIRED</div>
+        </div>
+        <div data-console-out></div>
+    </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Boot log: one line per 170ms, once per browser session; later visits
+// (and reduced motion) render the final state at once. Enter finishes the
+// boot, or authenticates if it's already done.
+(function () {
+    "use strict";
+    var boot = document.getElementById("boot");
+    var lines = boot.querySelectorAll(".boot-line");
+    var authUrl = document.getElementById("auth-button").getAttribute("href");
+    var shown = lines.length;
+    var timer = null;
+    var booted = false;
+    try { booted = sessionStorage.getItem("c3p0.booted") === "1"; } catch (e) { booted = true; }
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    function finish() {
+        clearInterval(timer);
+        for (var i = 0; i < lines.length; i++) { lines[i].hidden = false; }
+        shown = lines.length;
+        boot.classList.remove("is-typing");
+        boot.scrollTop = boot.scrollHeight;
+        try { sessionStorage.setItem("c3p0.booted", "1"); } catch (e) { /* blocked */ }
+    }
+
+    if (!booted && !reduce) {
+        boot.classList.add("is-typing");
+        for (var i = 0; i < lines.length; i++) { lines[i].hidden = true; }
+        shown = 0;
+        timer = setInterval(function () {
+            if (shown >= lines.length) { finish(); return; }
+            lines[shown].hidden = false;
+            shown += 1;
+            boot.scrollTop = boot.scrollHeight;
+        }, 170);
+    } else {
+        finish();
+    }
+
+    window.C3P0 = window.C3P0 || {};
+    window.C3P0.onEmptyEnter = function () {
+        if (boot.classList.contains("is-typing")) { finish(); } else { window.location.href = authUrl; }
+    };
+})();
+</script>
 {% endblock %}

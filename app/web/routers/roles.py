@@ -47,6 +47,7 @@ from app.web.discord_client import (
     send_channel_message,
 )
 from app.web.guild_options import guild_page_context, load_guild_discord_state, resolve_optional_id
+from app.web.message_editor import build_editor_context
 from app.web.role_components import (
     ButtonSpec,
     InvalidEmojiError,
@@ -187,6 +188,9 @@ async def new_role_form(
             "default_placeholder": _DEFAULT_PLACEHOLDER,
             "assignable_roles": state.assignable_roles,
             "text_channels": state.text_channels,
+            "editor_context": build_editor_context(
+                state=state, session=session, guild_name=context["guild_name"]
+            ),
         }
     )
     return request.app.state.templates.TemplateResponse(request, "roles_new.html", context)
@@ -222,6 +226,9 @@ async def create_role(
                 "default_placeholder": _DEFAULT_PLACEHOLDER,
                 "assignable_roles": state.assignable_roles,
                 "text_channels": state.text_channels,
+                "editor_context": build_editor_context(
+                    state=state, session=session, guild_name=context["guild_name"]
+                ),
                 "error": error,
             }
         )

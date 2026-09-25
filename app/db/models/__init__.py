@@ -9,6 +9,7 @@ from app.db.models.base import Base
 from app.db.models.bot_guild import BotGuild
 from app.db.models.custom_command import CustomCommand
 from app.db.models.guild_config import GuildConfig
+from app.db.models.guild_event import GuildEvent
 from app.db.models.guild_template import GuildTemplate
 from app.db.models.infraction import Infraction
 from app.db.models.moderation_config import ModerationConfig
@@ -30,4 +31,5 @@ __all__ = [
     "WebSession",
     "GuildTemplate",
     "AuditLogEntry",
+    "GuildEvent",
 ]

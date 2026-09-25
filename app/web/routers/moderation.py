@@ -63,6 +63,26 @@ def _filters_as_query(filters: dict, **overrides: str | int) -> str:
     return urlencode(query)
 
 
+def _build_type_chips(guild_id: int, filters: dict, counts: dict[str, int]) -> list[dict]:
+    """MOD.LOG's ALL/WARN/TIMEOUT/KICK/BAN chips. Each count honours the
+    current search text and state filter (so the numbers match what the
+    chip would show) but ignores the type filter itself."""
+    chips = []
+    for value in ["", *(t.value for t in InfractionType)]:
+        query = {k: v for k, v in filters.items() if v and k != "type"}
+        if value:
+            query["type"] = value
+        chips.append(
+            {
+                "label": (value or "all").upper(),
+                "count": counts[value],
+                "href": f"/guilds/{guild_id}/moderation?{urlencode(query)}",
+                "active": filters["type"] == value,
+            }
+        )
+    return chips
+
+
 def _build_sort_links(guild_id: int, filters: dict) -> dict[str, str]:
     links = {}
     for column in _SORT_COLUMNS:
@@ -128,6 +148,17 @@ async def _page_context(guild_id: int, session: LoadedSession, request: Request,
     )
     member_names = await _resolve_member_names(request, guild_id, infractions)
 
+    chip_types: list[InfractionType | None] = [None, *InfractionType]
+    chip_counts = await asyncio.gather(
+        *(
+            mod_service.count_search_infractions_for_guild(
+                guild_id, text=filters["q"] or None, type=chip_type, active=active_filter
+            )
+            for chip_type in chip_types
+        )
+    )
+    type_counts = {(t.value if t else ""): n for t, n in zip(chip_types, chip_counts, strict=True)}
+
     # dict keys are warning counts as strings (JSON object keys must be
     # strings - see ModerationConfig's own docstring), so a plain dictsort
     # would order "10" before "3". Sort numerically instead.
@@ -163,6 +194,7 @@ async def _page_context(guild_id: int, session: LoadedSession, request: Request,
             "all_infraction_types": list(InfractionType),
             "filters": filters,
             "sort_links": _build_sort_links(guild_id, filters),
+            "type_chips": _build_type_chips(guild_id, filters, type_counts),
             "offset": offset,
             "pagination": pagination,
         }

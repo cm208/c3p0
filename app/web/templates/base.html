@@ -1,37 +1,89 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-crt="max">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}C3P0 Dashboard{% endblock %}</title>
+    <title>{% block title %}C3P0 Console{% endblock %}</title>
     <meta name="color-scheme" content="dark">
-    <meta name="theme-color" content="#070402">
-    <!-- Paints the correct dark ground on the very first frame, before
-         style.css has even started downloading - otherwise the browser's
-         own white/light default background flashes during every
-         cross-page navigation (this is a full page reload, not an SPA),
-         which reads as a "gray screen" break between pages. -->
-    <style>html,body{background:#070402}</style>
+    <meta name="theme-color" content="#050302">
+    <!-- Dark ground on the very first frame, before style.css arrives -
+         every navigation is a full page load, so without this the
+         browser's default white flashes between pages. -->
+    <style>html,body{background:#050302}</style>
+    <!-- Apply the stored phosphor/CRT preferences before first paint, so
+         a green-phosphor operator never sees an amber flash. crt.js owns
+         changing them; this only reads. -->
+    <script>
+        (function () {
+            try {
+                var root = document.documentElement;
+                var phosphor = { amber: "#ffa31f", sodium: "#ff7a1f", green: "#52ff8a" }[localStorage.getItem("c3p0.phosphor")];
+                if (phosphor) root.style.setProperty("--p", phosphor);
+                var crt = localStorage.getItem("c3p0.crt");
+                if (!crt && window.matchMedia("(prefers-reduced-motion: reduce)").matches) crt = "off";
+                if (crt === "off" || crt === "normal" || crt === "max") root.dataset.crt = crt;
+            } catch (e) { /* storage blocked: defaults apply */ }
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
 </head>
-<body class="{% block body_class %}{% endblock %}">
-    <header class="site-header">
-        <a class="brand" href="/">C3P0</a>
-        {% if session %}
-            <div class="status-bar">
-                <span class="status-pill">OPERATIONAL</span>
-                <span class="operator-tag">OPERATOR: <strong>{{ session.discord_username }}</strong></span>
-                <form action="/auth/logout" method="post" class="logout-form">
-                    <button type="submit">[ DISCONNECT ]</button>
-                </form>
+{%- set nav_pages = {
+    "general": "general", "server-management": "server", "music": "music", "moderation": "mod",
+    "custom-commands": "cmds", "welcome": "welcome", "roles": "roles",
+} -%}
+{%- set console_page = console_page | default(nav_pages.get(active_nav, "") if active_nav is defined else "") -%}
+{%- set guild_slug = (guild_name or ("guild-" ~ guild_id)) | lower | replace(" ", "-") if guild_id is defined else "" -%}
+<body data-page="{{ console_page }}"
+      data-logged-in="{{ 'true' if session else 'false' }}"
+      {% if guild_id is defined %}data-guild-id="{{ guild_id }}"{% endif %}
+      {% if session %}data-csrf="{{ session.csrf_token }}"{% endif %}>
+<div class="bezel">
+    <div class="tube" id="tube">
+        <div class="ghost" aria-hidden="true">C3P0</div>
+        <div class="screen">
+            <div class="statusbar" role="status" aria-label="System status">
+                <span>C3P0 v{{ app_version }}</span>
+                <span class="sb-extra">TTY1</span>
+                <span>{% if guild_id is defined %}{{ guild_name or ("GUILD " ~ guild_id) }}{% elif session %}NO GUILD{% else %}OFFLINE{% endif %}</span>
+                <span class="sb-extra" data-status="shard">SHARD --</span>
+                <span class="sb-extra" data-status="gw">GW --ms</span>
+                <span class="sb-working">WORKING</span>
+                <span class="sb-clock" data-clock>--:--:--</span>
             </div>
-        {% endif %}
-    </header>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
+
+            <main class="main-area" id="main">
+                {% block content %}{% endblock %}
+            </main>
+
+            <form class="cmdline" id="cmdline" autocomplete="off" novalidate>
+                <span class="cmd-prompt">{% block prompt %}{% if guild_id is defined %}c3p0@{{ guild_slug }}:~/{{ console_page }}${% elif session %}c3p0@tty1:~/guilds${% else %}login:{% endif %}{% endblock %}</span>
+                <span class="cmd-confirm" aria-live="assertive"></span>
+                <span class="cmd-text" aria-hidden="true"></span><span class="cmd-cursor" aria-hidden="true"></span>
+                <input class="cmd-input" type="text" aria-label="Command line" spellcheck="false" autocapitalize="off" enterkeyhint="send">
+                <span class="cmd-hint">TYPE help{% if guild_id is defined %} · F1&ndash;F7 NAVIGATE{% endif %}</span>
+            </form>
+        </div>
+        <div class="crt" aria-hidden="true">
+            <div class="crt-scan"></div>
+            <div class="crt-roll"></div>
+            <div class="crt-flicker"></div>
+            <div class="crt-vignette"></div>
+            <div class="crt-glare"></div>
+            <div class="crt-warm"></div>
+            <div class="crt-power"><div class="crt-line"></div></div>
+        </div>
+    </div>
+    <div class="model-plate" aria-hidden="true"><span class="led"></span><span>C3P0 · MODEL 3PO-80 · PHOSPHOR DISPLAY TERMINAL</span></div>
+</div>
+{% if session %}
+<form id="logout-form" action="/auth/logout" method="post" hidden></form>
+{% endif %}
+<script src="/static/crt.js?v={{ asset_version }}" defer></script>
+<script src="/static/console.js?v={{ asset_version }}" defer></script>
+<script src="/static/confirm.js?v={{ asset_version }}" defer></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

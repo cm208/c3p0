@@ -60,6 +60,19 @@ class PlayerStateView:
     loop_mode: str
     queue: list[TrackView]
     max_queue_size: int
+    voice_channel_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BotStatusView:
+    version: str
+    ready: bool
+    latency_ms: int | None
+    shard_id: int
+    shard_count: int
+    guild_count: int
+    started_at: str | None
+    uptime_seconds: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +150,7 @@ def _state_view(data: dict) -> PlayerStateView:
         loop_mode=data["loop_mode"],
         queue=[_track_view(t) for t in data["queue"]],
         max_queue_size=data["max_queue_size"],
+        voice_channel_name=data.get("voice_channel_name"),
     )
 
 
@@ -221,3 +235,33 @@ async def set_volume(
         headers=_headers(token), json={"percent": percent}, description=f"POST /guilds/{guild_id}/music/volume",
     )
     return _state_view(data)
+
+
+async def restart(http: httpx.AsyncClient, base_url: str, token: str, guild_id: int) -> PlayerStateView:
+    data = await _call(
+        http, "POST", f"{base_url}/guilds/{guild_id}/music/restart",
+        headers=_headers(token), description=f"POST /guilds/{guild_id}/music/restart",
+    )
+    return _state_view(data)
+
+
+async def stop(http: httpx.AsyncClient, base_url: str, token: str, guild_id: int) -> PlayerStateView:
+    data = await _call(
+        http, "POST", f"{base_url}/guilds/{guild_id}/music/stop",
+        headers=_headers(token), description=f"POST /guilds/{guild_id}/music/stop",
+    )
+    return _state_view(data)
+
+
+async def get_bot_status(http: httpx.AsyncClient, base_url: str, token: str) -> BotStatusView:
+    data = await _call(http, "GET", f"{base_url}/status", headers=_headers(token), description="GET /status")
+    return BotStatusView(
+        version=data["version"],
+        ready=data["ready"],
+        latency_ms=data["latency_ms"],
+        shard_id=data["shard_id"],
+        shard_count=data["shard_count"],
+        guild_count=data["guild_count"],
+        started_at=data["started_at"],
+        uptime_seconds=data["uptime_seconds"],
+    )

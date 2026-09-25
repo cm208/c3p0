@@ -1,21 +1,76 @@
 {% extends "base.html" %}
-{% block title %}Your servers - C3P0 Dashboard{% endblock %}
+{% block title %}Select guild - C3P0 Console{% endblock %}
 {% block content %}
-<span class="eyebrow">Authorized Networks</span>
-<h1>Your servers</h1>
-{% if guilds %}
-    <ul class="guild-list">
+<div class="scroll">
+<div class="picker">
+    <div class="picker-head">
+        <div class="dim">AUTH OK · WELCOME BACK, {{ (session.discord_username or "OPERATOR") | upper }}</div>
+        <h1 class="page-title">SELECT GUILD_</h1>
+    </div>
+
+    {% if guilds %}
+    <div class="frame picker-grid">
+        <span class="frame-label">[ {{ guilds | length }} GUILD{{ "S" if guilds | length != 1 else "" }} FOUND ]</span>
+        <div class="picker-row is-head" aria-hidden="true">
+            <span>##</span><span>NAME</span><span class="members">MEMBERS</span><span class="status">STATUS</span><span></span>
+        </div>
         {% for guild in guilds %}
-        <li class="guild-row hud-frame">
-            <span class="item-title">{{ guild.name or "Unnamed server (" ~ guild.id ~ ")" }}</span>
-            <a class="button" href="/guilds/{{ guild.id }}/general">Manage</a>
-        </li>
+        {% set href = ("/guilds/" ~ guild.id ~ "/general") if guild.installed else guild.invite_url %}
+        <a class="picker-row {% if loop.first %}is-selected{% endif %}" href="{{ href }}" data-picker-row
+           {% if not guild.installed %}target="_blank" rel="noopener"{% endif %}>
+            <span class="num">{{ "%02d" | format(loop.index) }}</span>
+            <span class="name">{{ guild.name or ("Unnamed server " ~ guild.id) }}</span>
+            <span class="members">
+                {% if guild.members is not none %}
+                <span class="seg"><span style="width: {{ [4, (100 * guild.members / max_members) if max_members else 4] | max }}%;"></span></span>
+                <span class="count">{{ "{:,}".format(guild.members) }}</span>
+                {% else %}
+                <span class="dim">--</span>
+                {% endif %}
+            </span>
+            <span class="status">{% if not guild.installed %}NOT INSTALLED{% elif guild.online is not none %}{{ "{:,}".format(guild.online) }} ONLINE{% else %}ONLINE --{% endif %}</span>
+            <span class="action">{{ "[CONNECT]" if guild.installed else "[INVITE]" }}</span>
+        </a>
         {% endfor %}
-    </ul>
-{% else %}
-    <p class="empty-state">
-        No servers to show. This means either C3P0 isn't deployed on a server you manage,
-        or you don't hold Manage Server clearance on any server it's in.
-    </p>
-{% endif %}
+    </div>
+    <div class="dim">&uarr;&darr; SELECT · ENTER CONNECT · OR TYPE <span class="hot">connect 1</span></div>
+    {% else %}
+    <div class="frame">
+        <span class="frame-label">[ 0 GUILDS FOUND ]</span>
+        <p class="empty-state">NO MANAGEABLE SERVERS. C3P0 ONLY LISTS SERVERS WHERE YOU HOLD MANAGE SERVER.</p>
+    </div>
+    {% endif %}
+    <div data-console-out></div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Arrow keys / hover move the inverse selection; Enter (empty prompt) or
+// click opens it. Uninstalled guilds open Discord's invite page.
+(function () {
+    "use strict";
+    var rows = Array.prototype.slice.call(document.querySelectorAll("[data-picker-row]"));
+    if (!rows.length) { return; }
+    var selected = 0;
+    function select(i) {
+        rows[selected].classList.remove("is-selected");
+        selected = (i + rows.length) % rows.length;
+        rows[selected].classList.add("is-selected");
+        rows[selected].scrollIntoView({ block: "nearest" });
+    }
+    rows.forEach(function (row, i) {
+        row.addEventListener("mouseenter", function () { select(i); });
+    });
+    window.C3P0 = window.C3P0 || {};
+    window.C3P0.onArrow = function (step) { select(selected + step); return true; };
+    window.C3P0.onEmptyEnter = function () { rows[selected].click(); };
+    document.addEventListener("keydown", function (event) {
+        if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.target.closest(".cmdline")) {
+            event.preventDefault();
+            select(selected + (event.key === "ArrowUp" ? -1 : 1));
+        }
+    });
+})();
+</script>
 {% endblock %}

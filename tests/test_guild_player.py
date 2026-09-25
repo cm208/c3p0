@@ -9,6 +9,7 @@ voice_client.play() gets called with something.
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import discord
@@ -438,3 +439,62 @@ def test_elapsed_seconds_is_none_after_stop() -> None:
     player.stop()
 
     assert player.elapsed_seconds is None
+
+
+# --- Restart (the dashboard's |◄ PREV) ---
+
+
+async def test_restart_replays_current_track_without_touching_the_queue() -> None:
+    player = _make_player()
+    vc = _attach_fake_voice_client(player)
+    player.enqueue(_track("A"))
+    player.enqueue(_track("B"))
+    await player.start_or_advance()  # playing A, B queued
+
+    restarted = await player.restart()
+    assert restarted is True
+    assert vc.stop_calls == 1
+
+    # The deferred `after` callback's start_or_advance(), driven directly.
+    await player.start_or_advance()
+
+    assert player.current.title == "A"
+    assert [t.title for t in player.queue] == ["B"]
+
+
+async def test_restart_in_queue_loop_does_not_duplicate_the_track() -> None:
+    player = _make_player()
+    _attach_fake_voice_client(player)
+    player.enqueue(_track("A"))
+    player.enqueue(_track("B"))
+    await player.start_or_advance()
+    player.set_loop(LoopMode.QUEUE)
+
+    await player.restart()
+    await player.start_or_advance()
+
+    assert player.current.title == "A"
+    assert [t.title for t in player.queue] == ["B"]
+
+
+async def test_restart_with_nothing_playing_is_false() -> None:
+    player = _make_player()
+    _attach_fake_voice_client(player)
+
+    assert await player.restart() is False
+
+
+async def test_on_track_start_fires_for_each_started_track() -> None:
+    player = _make_player()
+    _attach_fake_voice_client(player)
+    started: list[str] = []
+
+    async def hook(track: Track) -> None:
+        started.append(track.title)
+
+    player.on_track_start = hook
+    player.enqueue(_track("A"))
+    await player.start_or_advance()
+    await asyncio.sleep(0)  # the hook runs as a background task
+
+    assert started == ["A"]

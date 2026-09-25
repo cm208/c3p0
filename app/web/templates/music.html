@@ -1,113 +1,126 @@
 {% extends "guild_base.html" %}
-{% block title %}Music - C3P0 Dashboard{% endblock %}
+{% block title %}Music - C3P0 Console{% endblock %}
 {% block guild_content %}
-<span class="eyebrow">Audio Systems</span>
-<h1>Music</h1>
+{% set has_track = state.current is not none %}
+{% set active = state.playing or state.paused %}
+<div class="stack" data-music-panel data-state-url="/guilds/{{ guild_id }}/music/state">
+<h1 class="page-title">AUDIO.SYS</h1>
 
-<div data-music-panel data-state-url="/guilds/{{ guild_id }}/music/state">
+<div class="grid-music">
+    <div class="stack">
+        <section class="frame stack-tight" data-now-playing>
+            <span class="frame-label" data-field="np-label">[ {% if state.paused %}PAUSED{% elif state.playing %}NOW PLAYING{% else %}IDLE{% endif %} ]</span>
+            <div class="np-title" data-field="title">{{ state.current.title if has_track else "NO SIGNAL" }}</div>
+            <div class="dim" data-field="meta">
+                {%- if has_track -%}
+                REQUESTED BY @{{ state.current.requested_by_name }}{% if state.voice_channel_name %} · VC: {{ state.voice_channel_name | upper }}{% endif %}
+                {%- elif state.connected -%}
+                QUEUE EMPTY{% if state.voice_channel_name %} · VC: {{ state.voice_channel_name | upper }}{% endif %}
+                {%- else -%}
+                NOT CONNECTED. RUN "play &lt;song&gt;" TO START THE QUEUE.
+                {%- endif -%}
+            </div>
+            <div class="seg lg" style="margin-top: 10px;"><span data-field="progress" style="width: {{ progress_percent(state.elapsed_seconds, state.current.duration_seconds) if has_track else 0 }}%;"></span></div>
+            <div class="np-times">
+                <span data-field="elapsed">{{ state.elapsed_seconds | duration if has_track else "0:00" }}</span>
+                <span class="duration" data-field="duration">{{ state.current.duration_seconds | duration if has_track else "--:--" }}</span>
+            </div>
+            <div class="transport">
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/restart" data-ok="track restarted">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" class="secondary" data-action="restart" {% if not active %}disabled{% endif %}>|&#9668; PREV</button>
+                </form>
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/pause" data-ok="paused" data-toggle="pause" {% if not state.playing %}hidden{% endif %}>
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" data-action="pause">&#10074;&#10074; PAUSE</button>
+                </form>
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/resume" data-ok="resumed" data-toggle="resume" {% if state.playing %}hidden{% endif %}>
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" data-action="resume" {% if not state.paused %}disabled{% endif %}>&#9658; PLAY</button>
+                </form>
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/skip" data-ok="skipped">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" class="secondary" data-action="skip" {% if not active %}disabled{% endif %}>SKIP &#9658;|</button>
+                </form>
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/stop" data-ok="stopped · queue cleared">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" class="secondary" data-action="stop" {% if not active %}disabled{% endif %}>&#9632; STOP</button>
+                </form>
+            </div>
+        </section>
 
-<div class="stat-row">
-    <div class="stat-tile hud-frame">
-        <span class="stat-value" data-field="volume">{{ state.volume_percent }}%</span>
-        <span class="stat-label">Volume</span>
+        <section class="frame" style="padding: 20px 12px 12px;">
+            <span class="frame-label">[ SCOPE · CH1 · 2ms/DIV ]</span>
+            <canvas class="scope-canvas" id="scope" aria-hidden="true"></canvas>
+        </section>
     </div>
-    <div class="stat-tile hud-frame">
-        <span class="stat-value" data-field="queue-length">{{ state.queue | length }}</span>
-        <span class="stat-label">Queued</span>
-    </div>
-</div>
 
-<div class="hud-frame now-playing-panel" data-now-playing>
-    <span class="eyebrow">Now Playing</span>
-    {% if state.current %}
-    <p class="now-playing-title" data-field="title">{{ state.current.title }}</p>
-    <p class="item-meta" data-field="requested-by">Requested by {{ state.current.requested_by_name }}</p>
-    <div class="progress-track">
-        <div class="progress-fill" data-field="progress" style="width: {{ progress_percent(state.elapsed_seconds, state.current.duration_seconds) }}%;"></div>
-    </div>
-    <p class="progress-time">
-        <span data-field="elapsed">{{ state.elapsed_seconds | duration }}</span> / <span data-field="duration">{{ state.current.duration_seconds | duration }}</span>
-        <span class="badge {{ 'on' if state.playing else 'off' }}" data-field="status">
-            {%- if state.paused %}PAUSED{% elif state.playing %}PLAYING{% else %}STOPPED{% endif -%}
-        </span>
-    </p>
-    {% else %}
-    <p class="empty-state" data-field="empty">
-        {% if not state.connected %}Not playing anything - add a track below to start.{% else %}Queue is empty.{% endif %}
-    </p>
-    {% endif %}
+    <div class="stack">
+        <section class="frame" style="padding: 20px 12px 12px;">
+            <span class="frame-label">[ SPECTRUM ]</span>
+            <canvas class="spectrum-canvas" id="spectrum" aria-hidden="true"></canvas>
+            <div class="vol-row">
+                <span class="dim">VOL</span>
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/volume" data-ok="volume changed">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <input type="hidden" name="percent" value="{{ [0, state.volume_percent - 10] | max }}" data-vol-step="-10">
+                    <button type="submit" class="ghost-btn" aria-label="Volume down">[-]</button>
+                </form>
+                <span class="seg"><span data-field="volume-bar" style="width: {{ state.volume_percent }}%;"></span></span>
+                <form method="post" action="/guilds/{{ guild_id }}/music/player/volume" data-ok="volume changed">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <input type="hidden" name="percent" value="{{ [100, state.volume_percent + 10] | min }}" data-vol-step="10">
+                    <button type="submit" class="ghost-btn" aria-label="Volume up">[+]</button>
+                </form>
+                <span class="pct" data-field="volume">{{ state.volume_percent }}%</span>
+            </div>
+        </section>
 
-    <div class="transport-controls">
-        <form method="post" action="/guilds/{{ guild_id }}/music/player/pause">
-            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-            <button type="submit" class="secondary" data-action="pause" {% if not state.playing %}disabled{% endif %}>Pause</button>
-        </form>
-        <form method="post" action="/guilds/{{ guild_id }}/music/player/resume">
-            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-            <button type="submit" class="secondary" data-action="resume" {% if not state.paused %}disabled{% endif %}>Resume</button>
-        </form>
-        <form method="post" action="/guilds/{{ guild_id }}/music/player/skip">
-            <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-            <button type="submit" class="secondary" data-action="skip" {% if not (state.playing or state.paused) %}disabled{% endif %}>Skip</button>
-        </form>
-    </div>
+        <section class="frame">
+            <span class="frame-label" data-field="queue-label">[ QUEUE · {{ state.queue | length }} TRACK{{ "S" if state.queue | length != 1 else "" }} ]</span>
+            <div data-queue-list>
+                {% for track in state.queue %}
+                <div class="queue-row">
+                    <span class="n">{{ "%02d" | format(loop.index) }}</span>
+                    <span class="t">{{ track.title }} <span class="by">&mdash; @{{ track.requested_by_name }}</span></span>
+                    <span class="dur">{{ track.duration_seconds | duration }}</span>
+                    <form method="post" action="/guilds/{{ guild_id }}/music/queue/{{ loop.index0 }}/remove" data-ok="removed from queue">
+                        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                        <button type="submit" class="ghost-btn danger" aria-label="Remove {{ track.title }}">[DEL]</button>
+                    </form>
+                </div>
+                {% else %}
+                <p class="empty-state">NO ENTRIES. RUN "play &lt;song&gt;" TO START THE QUEUE.</p>
+                {% endfor %}
+            </div>
 
-    <form method="post" action="/guilds/{{ guild_id }}/music/player/volume" class="volume-form">
-        <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-        <label for="percent">Volume</label>
-        <input type="number" id="percent" name="percent" min="0" max="100" value="{{ state.volume_percent }}">
-        <button type="submit" class="secondary">Set</button>
-    </form>
-</div>
-
-<span class="eyebrow">Queue</span>
-<ul class="item-list" data-queue-list>
-    {% for track in state.queue %}
-    <li class="item-row hud-frame">
-        <div class="item-main">
-            <span class="item-title">{{ track.title }}</span>
-            <span class="item-meta">{{ track.duration_seconds | duration }} &middot; Requested by {{ track.requested_by_name }}</span>
-        </div>
-        <div class="item-actions">
-            <form method="post" action="/guilds/{{ guild_id }}/music/queue/{{ loop.index0 }}/remove">
+            <form method="post" action="/guilds/{{ guild_id }}/music/queue/add" class="panel-form" style="margin-top: 14px;" data-ok="track queued">
                 <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                <button type="submit" class="danger">Remove</button>
+                <div class="field stacked">
+                    <label for="query">Song name or URL</label>
+                    <input type="text" id="query" name="query" required placeholder="Never Gonna Give You Up" style="width: 100%;">
+                </div>
+                {% if not state.connected %}
+                <div class="field stacked">
+                    <label for="voice_channel_id">Voice channel</label>
+                    <span class="select-wrap"><select id="voice_channel_id" name="voice_channel_id" required>
+                        <option value="">SELECT A CHANNEL&hellip;</option>
+                        {% for channel in voice_channels %}
+                        <option value="{{ channel.id }}">{{ channel.name }}</option>
+                        {% endfor %}
+                    </select></span>
+                    <p class="field-hint">Not connected yet. Pick where to play; the console's <code>play</code> uses this choice too.</p>
+                </div>
+                {% endif %}
+                <button type="submit">[ QUEUE ]</button>
             </form>
-        </div>
-    </li>
-    {% else %}
-    <li class="empty-state">Nothing queued.</li>
-    {% endfor %}
-</ul>
-
-<span class="eyebrow">Add to Queue</span>
-<form method="post" action="/guilds/{{ guild_id }}/music/queue/add" class="panel-form hud-frame">
-    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-    <div class="field">
-        <label for="query">Song name or URL</label>
-        <input type="text" id="query" name="query" required placeholder="Never Gonna Give You Up">
+            <p class="dim small" style="padding-top: 10px;">OR TYPE <span class="hot">play &lt;song&gt;</span></p>
+        </section>
     </div>
-    {% if not state.connected %}
-    <div class="field">
-        <label for="voice_channel_id">Voice channel</label>
-        <select id="voice_channel_id" name="voice_channel_id" required>
-            <option value="">Select a channel&hellip;</option>
-            {% for channel in voice_channels %}
-            <option value="{{ channel.id }}">{{ channel.name }}</option>
-            {% endfor %}
-        </select>
-        <p class="field-hint">Not connected to a voice channel yet - choose one to start playback.</p>
-    </div>
-    {% endif %}
-    <button type="submit">Add</button>
-</form>
-
 </div>
 
-<script src="/static/music.js?v={{ asset_version }}" defer></script>
-
-<span class="eyebrow">Configuration</span>
-<form method="post" action="/guilds/{{ guild_id }}/music" class="panel-form hud-frame">
+<form method="post" action="/guilds/{{ guild_id }}/music" class="frame" data-ok="music.cfg written">
+    <span class="frame-label">[ CONFIGURATION ]</span>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
 
     <div class="field-toggle">
@@ -116,20 +129,20 @@
     </div>
 
     <div class="field">
-        <label for="default_volume">Default volume</label>
+        <label for="default_volume">Default_volume</label>
         <input type="number" id="default_volume" name="default_volume" value="{{ config.default_volume }}" min="0" max="100" required>
-        <p class="field-hint">0-100. Applied to new sessions; doesn't affect a session already playing.</p>
+        <p class="field-hint">0-100. Applies to new sessions, not one already playing.</p>
     </div>
 
     <div class="field">
-        <label for="max_queue_size">Max queue size</label>
+        <label for="max_queue_size">Max_queue</label>
         <input type="number" id="max_queue_size" name="max_queue_size" value="{{ config.max_queue_size }}" min="1" max="1000" required>
     </div>
 
     <div class="field">
-        <label for="dj_role_id">DJ role</label>
-        <select id="dj_role_id" name="dj_role_id">
-            <option value="">Not set (anyone can control playback)</option>
+        <label for="dj_role_id">DJ_role</label>
+        <span class="select-wrap"><select id="dj_role_id" name="dj_role_id">
+            <option value="">NOT SET (ANYONE CAN CONTROL PLAYBACK)</option>
             {% set all_role_ids = all_roles | map(attribute="id") | list %}
             {% if config.dj_role_id and config.dj_role_id not in all_role_ids %}
             <option value="{{ config.dj_role_id }}" selected>
@@ -139,14 +152,14 @@
             {% for role in all_roles %}
             <option value="{{ role.id }}" {% if config.dj_role_id == role.id %}selected{% endif %}>{{ role.name }}</option>
             {% endfor %}
-        </select>
-        <p class="field-hint">Required to skip, stop, or manage the queue from Discord. Server managers - which includes anyone who can reach this dashboard - can always do this regardless of role.</p>
+        </select></span>
+        <p class="field-hint">Required to skip, stop, or manage the queue from Discord. Anyone who can reach this dashboard can always do it.</p>
     </div>
 
     <div class="field">
-        <label for="music_channel_id">Music activity channel</label>
-        <select id="music_channel_id" name="music_channel_id">
-            <option value="">Not set (no announcement)</option>
+        <label for="music_channel_id">Activity_channel</label>
+        <span class="select-wrap"><select id="music_channel_id" name="music_channel_id">
+            <option value="">NOT SET (NO ANNOUNCEMENT)</option>
             {% set text_channel_ids = text_channels | map(attribute="id") | list %}
             {% if config.music_channel_id and config.music_channel_id not in text_channel_ids %}
             <option value="{{ config.music_channel_id }}" selected>
@@ -156,10 +169,14 @@
             {% for channel in text_channels %}
             <option value="{{ channel.id }}" {% if config.music_channel_id == channel.id %}selected{% endif %}>#{{ channel.name }}</option>
             {% endfor %}
-        </select>
-        <p class="field-hint">When set, adding a track from this dashboard posts a short message here. A Discord !play already confirms in the channel it was typed in, so this only covers the dashboard.</p>
+        </select></span>
+        <p class="field-hint">When set, tracks queued from this dashboard are announced here. A Discord !play already confirms where it was typed.</p>
     </div>
 
-    <button type="submit">Apply</button>
+    <div class="actions">
+        <button type="submit">[ WRITE CONFIG ]</button>
+    </div>
 </form>
+</div>
 {% endblock %}
+{% block page_scripts %}<script src="/static/music.js?v={{ asset_version }}" defer></script>{% endblock %}

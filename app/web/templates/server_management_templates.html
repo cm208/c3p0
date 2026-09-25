@@ -1,64 +1,54 @@
 {% extends "server_management_base.html" %}
-{% block title %}Templates - Server Management - C3P0 Dashboard{% endblock %}
-{% block sm_title %}Templates{% endblock %}
+{% block title %}Templates - Server - C3P0 Console{% endblock %}
+{% block sm_title %}TEMPLATES{% endblock %}
 {% block sm_content %}
-<ul class="item-list">
-    {% for template in catalog %}
-    <li class="item-row hud-frame">
-        <div class="item-main">
-            <span class="item-title">
-                {% if template.is_builtin %}
-                <a href="/guilds/{{ guild_id }}/server-management/templates/builtin/{{ template.slug }}/preview">{{ template.name }}</a>
-                <span class="badge off">Built-in</span>
-                {% else %}
-                <a href="/guilds/{{ guild_id }}/server-management/templates/{{ template.id }}/preview">{{ template.name }}</a>
+<section class="frame">
+    <span class="frame-label">[ {{ catalog | length }} TEMPLATE{{ "S" if catalog | length != 1 else "" }} ]</span>
+    <ul class="item-list">
+        {% for template in catalog %}
+        {% set base = "/guilds/" ~ guild_id ~ "/server-management/templates/" ~ ("builtin/" ~ template.slug if template.is_builtin else template.id) %}
+        <li class="item-row">
+            <div class="item-main">
+                <a class="item-title" href="{{ base }}/preview">{{ template.name }}</a>
+                <span class="item-meta">
+                    {% if template.is_builtin %}[BUILT-IN] · {% endif %}{{ template.description or "No description." }}
+                    · {{ template.definition.roles | length }} role{{ "s" if template.definition.roles | length != 1 else "" }},
+                    {{ template.definition.channels | length }} channel{{ "s" if template.definition.channels | length != 1 else "" }}
+                </span>
+            </div>
+            <div class="item-actions">
+                <a class="button secondary" href="{{ base }}/preview">PREVIEW</a>
+                <form method="post" action="{{ base }}/apply"
+                      data-confirm="apply {{ template.name }} · This will PERMANENTLY DELETE every channel and category in this server, then create this template's roles and channels. PROCEED?"
+                      data-ok="template {{ template.name }} applied">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" class="danger">APPLY</button>
+                </form>
+                {% if not template.is_builtin %}
+                <form method="post" action="{{ base }}/delete"
+                      data-confirm="rm template {{ template.name }} · THIS CANNOT BE UNDONE. PROCEED?" data-ok="template {{ template.name }} deleted">
+                    <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
+                    <button type="submit" class="ghost-btn danger">[DEL]</button>
+                </form>
                 {% endif %}
-            </span>
-            <span class="item-meta">
-                {{ template.description or "No description." }}
-                &middot; {{ template.definition.roles | length }} role{{ "s" if template.definition.roles | length != 1 else "" }},
-                {{ template.definition.channels | length }} channel{{ "s" if template.definition.channels | length != 1 else "" }}
-            </span>
-        </div>
-        <div class="item-actions">
-            {% if template.is_builtin %}
-            <a class="button secondary" href="/guilds/{{ guild_id }}/server-management/templates/builtin/{{ template.slug }}/preview">Preview</a>
-            <form method="post" action="/guilds/{{ guild_id }}/server-management/templates/builtin/{{ template.slug }}/apply"
-                  data-confirm="Apply &quot;{{ template.name }}&quot;? This will PERMANENTLY DELETE every channel and category in this server, then create this template's roles and channels. This cannot be undone.">
-                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                <button type="submit">Apply</button>
-            </form>
-            {% else %}
-            <a class="button secondary" href="/guilds/{{ guild_id }}/server-management/templates/{{ template.id }}/preview">Preview</a>
-            <form method="post" action="/guilds/{{ guild_id }}/server-management/templates/{{ template.id }}/apply"
-                  data-confirm="Apply &quot;{{ template.name }}&quot;? This will PERMANENTLY DELETE every channel and category in this server, then create this template's roles and channels. This cannot be undone.">
-                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                <button type="submit">Apply</button>
-            </form>
-            <form method="post" action="/guilds/{{ guild_id }}/server-management/templates/{{ template.id }}/delete"
-                  data-confirm="Delete the template &quot;{{ template.name }}&quot;? This can't be undone.">
-                <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
-                <button type="submit" class="danger">Delete</button>
-            </form>
-            {% endif %}
-        </div>
-    </li>
-    {% endfor %}
-</ul>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
 
-<span class="eyebrow">Save Current Layout</span>
-<p class="field-hint">Snapshots this server's current roles and channels (minus managed/integration roles) as a private template you can reapply later, here or on another server.</p>
-<form method="post" action="/guilds/{{ guild_id }}/server-management/templates" class="panel-form hud-frame">
+<form method="post" action="/guilds/{{ guild_id }}/server-management/templates" class="frame panel-form" data-ok="layout saved as template">
+    <span class="frame-label">[ SAVE CURRENT LAYOUT ]</span>
+    <p class="field-hint">Snapshots this server's current roles and channels (minus managed/integration roles) as a private template you can reapply later, here or on another server.</p>
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <div class="field">
         <label for="name">Name</label>
         <input type="text" id="name" name="name" maxlength="100" required>
     </div>
     <div class="field">
-        <label for="description">Description (optional)</label>
-        <input type="text" id="description" name="description" maxlength="500">
+        <label for="description">Description</label>
+        <input type="text" id="description" name="description" maxlength="500" placeholder="optional">
     </div>
-    <button type="submit">Save as Template</button>
+    <button type="submit">[ SAVE AS TEMPLATE ]</button>
 </form>
-<script src="/static/confirm.js?v={{ asset_version }}" defer></script>
 {% endblock %}

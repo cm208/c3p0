@@ -1,32 +1,73 @@
 {% extends "server_management_base.html" %}
-{% block title %}Channels - Server Management - C3P0 Dashboard{% endblock %}
-{% block sm_title %}Channels{% endblock %}
+{% block title %}Server - C3P0 Console{% endblock %}
+{% block sm_title %}SERVER{% endblock %}
 {% block sm_content %}
-<p class="field-hint">
-    Drag to reorder or move between categories. Click a name to rename it. Right-click a channel or category for more
-    options. Nothing reaches Discord until you click Apply.
-</p>
+<div class="stat-row">
+    {% for tile in stat_tiles %}
+    <div class="stat-tile">
+        <span class="stat-label">[ {{ tile.label }} ]</span>
+        <span class="stat-value">{{ tile.value }}</span>
+        <span class="stat-sub">{{ tile.sub }}</span>
+    </div>
+    {% endfor %}
+</div>
 
-<div class="canvas-toolbar hud-frame">
+<div class="frame canvas-toolbar">
+    <span class="frame-label">[ DRAFT ]</span>
     <span class="canvas-status" id="canvas-status">No unsaved changes.</span>
     <div class="canvas-toolbar-actions">
-        <button type="button" class="secondary" id="canvas-discard">Discard Draft</button>
-        <button type="button" id="canvas-apply-button">Apply</button>
+        <button type="button" class="secondary" id="canvas-discard">[ DISCARD ]</button>
+        <button type="button" id="canvas-apply-button">[ APPLY ]</button>
     </div>
 </div>
 
-<div id="canvas-root" class="canvas-list" data-everyone-role-id="{{ everyone_role_id }}"></div>
+<div class="tree-layout">
+    <section class="frame" style="padding: 22px 12px 12px;" data-no-refocus>
+        <span class="frame-label">[ CHANNEL TREE ]</span>
+        <div id="canvas-root" class="canvas-list" data-everyone-role-id="{{ everyone_role_id }}"></div>
+        <div class="canvas-add" id="canvas-root-add">
+            <button type="button" class="canvas-add-trigger" title="Add to server root">+ ROOT</button>
+            <div class="canvas-add-options">
+                <button type="button" data-add-type="0"># TEXT</button>
+                <button type="button" data-add-type="2">&lt;) VOICE</button>
+                <button type="button" data-add-type="4">&#9662; CATEGORY</button>
+            </div>
+        </div>
+    </section>
 
-<div class="canvas-add" id="canvas-root-add">
-    <button type="button" class="canvas-add-trigger" title="Add to server root">+</button>
-    <div class="canvas-add-options">
-        <button type="button" data-add-type="0">#&nbsp;Text</button>
-        <button type="button" data-add-type="2">&#128266;&nbsp;Voice</button>
-        <button type="button" data-add-type="4">&#128193;&nbsp;Category</button>
+    <div class="stack">
+        <section class="frame stack-tight" id="canvas-selected" aria-live="polite">
+            <span class="frame-label">[ SELECTED ]</span>
+            <div class="sel-name" data-sel="name">&mdash;</div>
+            <div class="dim" data-sel="meta">CLICK A CHANNEL IN THE TREE</div>
+            <div class="actions">
+                <button type="button" class="secondary" data-sel-action="rename" disabled>[R]ENAME</button>
+                <button type="button" class="secondary" data-sel-action="perms" disabled>PERMS</button>
+                <button type="button" class="danger" data-sel-action="delete" disabled>[DEL]ETE</button>
+            </div>
+        </section>
+
+        <section class="frame stack-tight">
+            <span class="frame-label">[ NEW CHANNEL ]</span>
+            <div class="row">
+                <span class="dim">#</span>
+                <input type="text" id="canvas-new-name" placeholder="channel-name" maxlength="100" style="flex: 1;" aria-label="New channel name">
+            </div>
+            <div class="dim small" data-sel="created-under">CREATED UNDER: (TOP LEVEL)</div>
+            <div class="actions">
+                <button type="button" id="canvas-new-text">[ CREATE ]</button>
+                <button type="button" class="secondary" id="canvas-new-voice">&lt;) VOICE</button>
+            </div>
+        </section>
+
+        <p class="dim small">
+            DRAG TO REORDER OR MOVE BETWEEN CATEGORIES. CLICK A NAME TO RENAME. RIGHT-CLICK FOR MORE.
+            NOTHING REACHES DISCORD UNTIL [ APPLY ].
+        </p>
     </div>
 </div>
 
-<form id="canvas-apply-form" method="post" action="{{ apply_url }}" style="display: none;">
+<form id="canvas-apply-form" method="post" action="{{ apply_url }}" style="display: none;" data-ok="channel changes applied">
     <input type="hidden" name="csrf_token" value="{{ session.csrf_token }}">
     <input type="hidden" name="batch" id="canvas-batch-field">
 </form>
@@ -36,5 +77,5 @@
 <script type="application/json" id="canvas-overwrite-permissions">{{ overwrite_permissions | tojson }}</script>
 <script type="application/json" id="canvas-permission-bit-values">{{ permission_bit_values | tojson }}</script>
 <script type="application/json" id="canvas-operator-permissions">{{ operator_permissions | tojson }}</script>
-<script src="/static/channel_canvas.js?v={{ asset_version }}" defer></script>
 {% endblock %}
+{% block page_scripts %}<script src="/static/channel_canvas.js?v={{ asset_version }}" defer></script>{% endblock %}
