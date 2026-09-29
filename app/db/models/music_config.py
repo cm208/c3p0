@@ -24,6 +24,8 @@ class MusicConfig(Base, GuildScopedMixin, TimestampMixin):
     max_queue_size: Mapped[int] = mapped_column(Integer, default=100)
     dj_role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     music_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Leave voice after this many minutes with nothing playing; 0 = stay.
+    idle_disconnect_minutes: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
 
     def __repr__(self) -> str:
         return f"MusicConfig(guild_id={self.guild_id}, enabled={self.enabled})"

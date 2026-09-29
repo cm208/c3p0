@@ -140,6 +140,12 @@
     </div>
 
     <div class="field">
+        <label for="idle_disconnect_minutes">Idle_timeout</label>
+        <input type="number" id="idle_disconnect_minutes" name="idle_disconnect_minutes" value="{{ config.idle_disconnect_minutes }}" min="0" max="120" required>
+        <p class="field-hint">Minutes with nothing playing before C3P0 leaves voice. 0 = stay until told to leave. Takes effect from the next quiet period.</p>
+    </div>
+
+    <div class="field">
         <label for="dj_role_id">DJ_role</label>
         <span class="select-wrap"><select id="dj_role_id" name="dj_role_id">
             <option value="">NOT SET (ANYONE CAN CONTROL PLAYBACK)</option>

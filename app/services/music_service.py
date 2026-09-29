@@ -10,6 +10,8 @@ than an oversight.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,10 @@ MIN_VOLUME = 0
 MAX_VOLUME = 100
 MIN_QUEUE_SIZE = 1
 MAX_QUEUE_SIZE = 1000
+MIN_IDLE_DISCONNECT_MINUTES = 0  # 0 = never leave on its own
+MAX_IDLE_DISCONNECT_MINUTES = 120
+
+logger = logging.getLogger(__name__)
 
 
 class MusicValidationError(Exception):
@@ -40,6 +46,7 @@ class MusicConfigView:
     max_queue_size: int
     dj_role_id: int | None
     music_channel_id: int | None
+    idle_disconnect_minutes: int
 
 
 def _to_view(config: MusicConfig) -> MusicConfigView:
@@ -50,12 +57,16 @@ def _to_view(config: MusicConfig) -> MusicConfigView:
         max_queue_size=config.max_queue_size,
         dj_role_id=config.dj_role_id,
         music_channel_id=config.music_channel_id,
+        idle_disconnect_minutes=config.idle_disconnect_minutes,
     )
 
 
 class MusicService:
     def __init__(self, default_prefix: str = "!") -> None:
         self._players: dict[int, GuildPlayer] = {}
+        # guild_id -> the pending "leave voice if still quiet" task; see
+        # _arm_idle_timer.
+        self._idle_tasks: dict[int, asyncio.Task[None]] = {}
         self._events = EventLogService(default_prefix=default_prefix)
         # Only needed so that configuring music before ever running /config
         # still creates a GuildConfig row with the right default prefix,
@@ -115,6 +126,17 @@ class MusicService:
             config = await MusicConfigRepository(session).set_music_channel(guild_id, channel_id)
             return _to_view(config)
 
+    async def set_idle_disconnect_minutes(self, guild_id: int, minutes: int) -> MusicConfigView:
+        if not MIN_IDLE_DISCONNECT_MINUTES <= minutes <= MAX_IDLE_DISCONNECT_MINUTES:
+            raise MusicValidationError(
+                f"Idle timeout must be between {MIN_IDLE_DISCONNECT_MINUTES} and "
+                f"{MAX_IDLE_DISCONNECT_MINUTES} minutes (0 = never leave)."
+            )
+        async with session_scope() as session:
+            await self._ensure_guild_row(session, guild_id)
+            config = await MusicConfigRepository(session).set_idle_disconnect_minutes(guild_id, minutes)
+            return _to_view(config)
+
     async def get_or_create_player(self, guild_id: int) -> GuildPlayer:
         player = self._players.get(guild_id)
         if player is not None:
@@ -125,6 +147,7 @@ class MusicService:
             guild_id, max_queue_size=config.max_queue_size, default_volume=config.default_volume
         )
         player.on_track_start = lambda track: self._announce_track(guild_id, track)
+        player.on_idle = lambda: self._arm_idle_timer(guild_id, player)
         self._players[guild_id] = player
         return player
 
@@ -140,3 +163,51 @@ class MusicService:
 
     def remove_player(self, guild_id: int) -> None:
         self._players.pop(guild_id, None)
+        self._cancel_idle_timer(guild_id)
+
+    async def _arm_idle_timer(self, guild_id: int, player: GuildPlayer) -> None:
+        """(Re)start the countdown to leaving voice. Called by the player
+        whenever it goes quiet - joined with nothing queued, or the last
+        track finished/was stopped. Re-arming replaces any earlier timer, so
+        the countdown always runs from the most recent quiet moment.
+
+        The setting is read here, awaited by the caller, rather than inside
+        the timer task: the task gets cancelled whenever the timer re-arms or
+        the player is removed, and a cancel landing mid-DB-read would abandon
+        a session in flight. The task itself only ever sleeps and then leaves.
+        Reading it at arm time also means a dashboard change applies from
+        the next quiet period on (the web process only writes the DB).
+
+        Nothing cancels the timer when a track starts: _leave_if_idle checks
+        is_playing() when it fires instead, and the track ending re-arms it.
+        """
+        self._cancel_idle_timer(guild_id)
+        minutes = (await self.get_config(guild_id)).idle_disconnect_minutes
+        if minutes <= 0:
+            return
+        # Re-cancel: another arm may have slipped in during the await above.
+        self._cancel_idle_timer(guild_id)
+        self._idle_tasks[guild_id] = asyncio.get_running_loop().create_task(
+            self._leave_if_idle(guild_id, player, minutes)
+        )
+
+    def _cancel_idle_timer(self, guild_id: int) -> None:
+        task = self._idle_tasks.pop(guild_id, None)
+        if task is not None:
+            task.cancel()
+
+    async def _leave_if_idle(self, guild_id: int, player: GuildPlayer, minutes: int) -> None:
+        await asyncio.sleep(minutes * 60)
+        # Past the only cancellable wait: drop our own entry so nothing
+        # cancels us partway through leaving.
+        self._idle_tasks.pop(guild_id, None)
+        # A paused track counts as playing: pausing isn't "done".
+        if self._players.get(guild_id) is not player or not player.is_connected() or player.is_playing():
+            return
+        try:
+            self._players.pop(guild_id, None)
+            await player.disconnect()
+            logger.info("Left voice after being idle", extra={"guild_id": guild_id})
+            await self.record_event(guild_id, f"left voice after {minutes} min idle")
+        except Exception:
+            logger.exception("Idle disconnect failed", extra={"guild_id": guild_id})

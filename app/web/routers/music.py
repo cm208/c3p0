@@ -1,6 +1,6 @@
 """Music: configuration, plus live now-playing/queue/transport controls.
 
-Config (enabled/default_volume/max_queue_size/dj_role_id) is handled the
+Config (enabled/default_volume/max_queue_size/idle timeout/dj_role_id) is handled the
 same way every other guild setting is - a plain form POST against
 MusicService. dj_role_id is deliberately validated against all_roles, not
 the hierarchy-filtered assignable_roles every other role dropdown on this
@@ -131,6 +131,8 @@ async def update_music(
     queue_size_raw = str(form.get("max_queue_size") or "")
     dj_role_raw = str(form.get("dj_role_id") or "")
     music_channel_raw = str(form.get("music_channel_id") or "")
+    # Absent (an older cached copy of the form) means "leave it as is".
+    idle_raw = form.get("idle_disconnect_minutes")
 
     service = MusicService()
     discord_state = await load_guild_discord_state(request, guild_id)
@@ -153,6 +155,13 @@ async def update_music(
     except ValueError:
         return await _rerender("Queue size must be a whole number.")
 
+    idle_minutes: int | None = None
+    if idle_raw is not None:
+        try:
+            idle_minutes = int(str(idle_raw))
+        except ValueError:
+            return await _rerender("Idle timeout must be a whole number of minutes.")
+
     dj_role_id, dj_role_error = resolve_optional_id(dj_role_raw, all_role_ids)
     if dj_role_error:
         return await _rerender(dj_role_error)
@@ -164,6 +173,8 @@ async def update_music(
     try:
         await service.set_default_volume(guild_id, volume)
         await service.set_max_queue_size(guild_id, queue_size)
+        if idle_minutes is not None:
+            await service.set_idle_disconnect_minutes(guild_id, idle_minutes)
     except MusicValidationError as exc:
         return await _rerender(str(exc))
 

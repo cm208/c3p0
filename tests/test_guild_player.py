@@ -498,3 +498,44 @@ async def test_on_track_start_fires_for_each_started_track() -> None:
     await asyncio.sleep(0)  # the hook runs as a background task
 
     assert started == ["A"]
+
+
+# --- Idle hook ---
+
+
+async def test_on_idle_fires_when_playback_runs_out() -> None:
+    player = _make_player()
+    _attach_fake_voice_client(player)
+    idle_calls: list[None] = []
+    async def record_idle() -> None:
+        idle_calls.append(None)
+
+    player.on_idle = record_idle
+    player.enqueue(_track("A"))
+
+    await player.start_or_advance()  # plays A
+    assert idle_calls == []
+
+    await player.start_or_advance()  # A finished, queue empty
+    assert idle_calls == [None]
+
+
+async def test_on_idle_fires_on_fresh_connect_only() -> None:
+    player = _make_player()
+    idle_calls: list[None] = []
+    async def record_idle() -> None:
+        idle_calls.append(None)
+
+    player.on_idle = record_idle
+
+    class FakeChannel:
+        id = 1
+
+        async def connect(self) -> FakeVoiceClient:
+            return FakeVoiceClient(self)
+
+    channel = FakeChannel()
+    await player.connect(channel)  # type: ignore[arg-type]
+    await player.connect(channel)  # type: ignore[arg-type]  # already there - not a new quiet period
+
+    assert idle_calls == [None]

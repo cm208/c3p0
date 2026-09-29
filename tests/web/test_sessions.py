@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -194,3 +195,91 @@ async def test_delete_is_a_noop_for_missing_cookie(db_session: AsyncSession) -> 
     service = SessionService(_config())
 
     await service.delete(None)  # should not raise
+
+
+async def test_load_keeps_session_and_stale_cache_when_rate_limited(
+    db_session: AsyncSession,
+) -> None:
+    now = datetime.now(UTC)
+    await _seed_session(
+        db_session,
+        guild_permissions_cache={"111": 32},
+        guild_permissions_cached_at=now - timedelta(hours=2),
+    )
+
+    def rate_limited(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"retry_after": 1.0})
+
+    service = SessionService(_config(guild_permissions_cache_ttl_seconds=3600))
+    async with _mock_http(rate_limited) as http:
+        loaded = await service.load("raw-token", http=http)
+
+    assert loaded is not None
+    assert loaded.guild_permissions == {111: 32}
+
+    # Retry is deferred rather than attempted on every request...
+    def fail_if_called(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected Discord call: {request.url}")
+
+    async with _mock_http(fail_if_called) as http:
+        assert await service.load("raw-token", http=http) is not None
+
+    # ...but only briefly, not for a whole TTL.
+    record = await WebSessionRepository(db_session).get_by_token_hash(_hash_token("raw-token"))
+    assert record is not None
+    cached_at = record.guild_permissions_cached_at.replace(tzinfo=UTC)
+    assert cached_at < now - timedelta(minutes=55)
+
+
+async def test_load_keeps_session_on_network_error(db_session: AsyncSession) -> None:
+    await _seed_session(
+        db_session,
+        guild_permissions_cache={"111": 32},
+        guild_permissions_cached_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom", request=request)
+
+    service = SessionService(_config(guild_permissions_cache_ttl_seconds=60))
+    async with _mock_http(unreachable) as http:
+        loaded = await service.load("raw-token", http=http)
+
+    assert loaded is not None
+    assert loaded.guild_permissions == {111: 32}
+
+
+async def test_load_deletes_session_when_guild_fetch_unauthorized(db_session: AsyncSession) -> None:
+    await _seed_session(db_session)
+
+    def unauthorized(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"message": "401: Unauthorized"})
+
+    service = SessionService(_config())
+    async with _mock_http(unauthorized) as http:
+        assert await service.load("raw-token", http=http) is None
+
+    assert await WebSessionRepository(db_session).get_by_token_hash(_hash_token("raw-token")) is None
+
+
+async def test_concurrent_loads_share_one_refresh(db_session: AsyncSession) -> None:
+    await _seed_session(
+        db_session,
+        guild_permissions_cache={"111": 1},
+        guild_permissions_cached_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+
+    guild_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal guild_calls
+        guild_calls += 1
+        await asyncio.sleep(0.01)  # let the other loads pile up behind the lock
+        return _guilds_response(request)
+
+    service = SessionService(_config(guild_permissions_cache_ttl_seconds=3600))
+    async with _mock_http(handler) as http:
+        results = await asyncio.gather(*(service.load("raw-token", http=http) for _ in range(3)))
+
+    assert all(r is not None and r.guild_permissions == {111: 32} for r in results)
+    assert guild_calls == 1

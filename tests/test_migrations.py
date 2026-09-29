@@ -55,3 +55,14 @@ def test_migration_0006_adds_event_table_and_use_count(_sqlite_url: str, tmp_pat
 
     assert "guild_event" in tables
     assert "use_count" in command_columns
+
+
+def test_migration_0007_adds_idle_disconnect_minutes(_sqlite_url: str, tmp_path: Path) -> None:
+    import sqlite3
+
+    run_migrations(_sqlite_url)
+
+    with sqlite3.connect(tmp_path / "migrations.db") as conn:
+        columns = {row[1]: row[4] for row in conn.execute("PRAGMA table_info(music_config)")}
+
+    assert columns["idle_disconnect_minutes"] == "'5'"

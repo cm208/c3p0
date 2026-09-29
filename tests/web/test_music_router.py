@@ -231,6 +231,7 @@ async def test_post_music_updates_all_fields(
                     "enabled": "on",
                     "default_volume": "60",
                     "max_queue_size": "25",
+                    "idle_disconnect_minutes": "12",
                     "dj_role_id": str(BOT_ROLE_ID),
                     "music_channel_id": str(CHANNEL_A),
                     "csrf_token": csrf_token,
@@ -245,6 +246,7 @@ async def test_post_music_updates_all_fields(
     assert config.enabled is True
     assert config.default_volume == 60
     assert config.max_queue_size == 25
+    assert config.idle_disconnect_minutes == 12
     assert config.dj_role_id == BOT_ROLE_ID
     assert config.music_channel_id == CHANNEL_A
 

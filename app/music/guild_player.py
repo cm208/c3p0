@@ -58,6 +58,13 @@ class GuildPlayer:
         # whenever a track actually starts. MusicService uses it to feed
         # the dashboard's activity log; None in tests and by default.
         self.on_track_start: Callable[[Track], Awaitable[None]] | None = None
+        # Optional hook called whenever the player goes quiet while still
+        # connected: a fresh connect, or playback running out (last track
+        # ended, or stop()). MusicService uses it to arm the idle-disconnect
+        # timer; None in tests and by default. Awaited inline (unlike
+        # on_track_start) so its DB read never runs in a cancellable
+        # background task - see MusicService._arm_idle_timer.
+        self.on_idle: Callable[[], Awaitable[None]] | None = None
         # Elapsed-time tracking for `current`, correct across pause/resume -
         # see elapsed_seconds. All three reset together whenever a new track
         # actually starts (start_or_advance) or playback stops (stop()).
@@ -94,6 +101,8 @@ class GuildPlayer:
                 await self.voice_client.move_to(channel)
             return
         self.voice_client = await channel.connect()
+        if self.on_idle is not None:
+            await self.on_idle()
 
     async def disconnect(self) -> None:
         if self.voice_client is not None:
@@ -224,6 +233,8 @@ class GuildPlayer:
                 self._queue.append(self.current)
         else:
             self.current = None
+            if self.on_idle is not None:
+                await self.on_idle()
             return False
 
         self.current = next_track

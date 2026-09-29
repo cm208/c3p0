@@ -1,6 +1,6 @@
 [project]
 name = "c3p0"
-version = "1.4.0"
+version = "1.5.0"
 description = "Self-hosted, multi-guild Discord bot"
 requires-python = ">=3.12"
 readme = "README.md"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,3 +104,131 @@ async def test_remove_player(db_session: AsyncSession) -> None:
     service.remove_player(GUILD_A)
 
     assert service.get_player(GUILD_A) is None
+
+
+# --- Idle disconnect ---
+
+
+class FakeVoiceClient:
+    def __init__(self) -> None:
+        self.playing = False
+        self.disconnected = False
+
+    def is_connected(self) -> bool:
+        return not self.disconnected
+
+    def is_playing(self) -> bool:
+        return self.playing
+
+    def is_paused(self) -> bool:
+        return False
+
+    async def disconnect(self, force: bool = False) -> None:
+        self.disconnected = True
+
+
+@pytest.fixture
+def fast_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Makes the idle timer's sleep instant, recording what it was asked for."""
+    real_sleep = asyncio.sleep
+    requested: list[float] = []
+
+    async def instant(delay: float) -> None:
+        requested.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr("app.services.music_service.asyncio.sleep", instant)
+    return requested
+
+
+async def _connected_player(service: MusicService) -> tuple[GuildPlayer, FakeVoiceClient]:
+    player = await service.get_or_create_player(GUILD_A)
+    vc = FakeVoiceClient()
+    player.voice_client = vc  # type: ignore[assignment]
+    return player, vc
+
+
+async def _run_idle_timer(service: MusicService) -> None:
+    task = service._idle_tasks.get(GUILD_A)
+    assert task is not None
+    await task
+
+
+async def test_set_idle_disconnect_minutes_validates_range(db_session: AsyncSession) -> None:
+    service = MusicService()
+
+    assert (await service.get_config(GUILD_A)).idle_disconnect_minutes == 5
+    assert (await service.set_idle_disconnect_minutes(GUILD_A, 0)).idle_disconnect_minutes == 0
+    with pytest.raises(MusicValidationError):
+        await service.set_idle_disconnect_minutes(GUILD_A, -1)
+    with pytest.raises(MusicValidationError):
+        await service.set_idle_disconnect_minutes(GUILD_A, 121)
+
+
+async def test_idle_player_leaves_after_configured_minutes(
+    db_session: AsyncSession, fast_sleep: list[float]
+) -> None:
+    service = MusicService()
+    await service.set_idle_disconnect_minutes(GUILD_A, 7)
+    player, vc = await _connected_player(service)
+
+    await player.on_idle()  # type: ignore[misc]
+    await _run_idle_timer(service)
+
+    assert fast_sleep == [7 * 60]
+    assert vc.disconnected
+    assert service.get_player(GUILD_A) is None
+    assert GUILD_A not in service._idle_tasks
+
+
+async def test_idle_timer_does_nothing_while_playing(
+    db_session: AsyncSession, fast_sleep: list[float]
+) -> None:
+    service = MusicService()
+    player, vc = await _connected_player(service)
+    vc.playing = True
+
+    await player.on_idle()  # type: ignore[misc]
+    await _run_idle_timer(service)
+
+    assert not vc.disconnected
+    assert service.get_player(GUILD_A) is player
+
+
+async def test_zero_minutes_never_leaves(db_session: AsyncSession) -> None:
+    service = MusicService()
+    await service.set_idle_disconnect_minutes(GUILD_A, 0)
+    player, _vc = await _connected_player(service)
+
+    await player.on_idle()  # type: ignore[misc]
+
+    assert GUILD_A not in service._idle_tasks
+
+
+async def test_rearming_replaces_the_pending_timer(db_session: AsyncSession) -> None:
+    service = MusicService()
+    player, _vc = await _connected_player(service)
+
+    await player.on_idle()  # type: ignore[misc]
+    first = service._idle_tasks[GUILD_A]
+    await player.on_idle()  # type: ignore[misc]
+    second = service._idle_tasks[GUILD_A]
+
+    assert second is not first
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    service.remove_player(GUILD_A)
+    with pytest.raises(asyncio.CancelledError):
+        await second
+
+
+async def test_remove_player_cancels_idle_timer(db_session: AsyncSession) -> None:
+    service = MusicService()
+    player, _vc = await _connected_player(service)
+    await player.on_idle()  # type: ignore[misc]
+    task = service._idle_tasks[GUILD_A]
+
+    service.remove_player(GUILD_A)
+
+    with pytest.raises(asyncio.CancelledError):
+        await task

@@ -2,6 +2,21 @@
 
 All notable changes are recorded here. This project follows [Semantic Versioning](https://semver.org/) from 1.3.0 onward.
 
+## [1.5.0] - 2026-09-28
+
+### Added
+
+- **Music idle timeout.** C3P0 now leaves the voice channel after 5 minutes with nothing playing: after the last song ends, after `!stop`, or after joining with nothing queued. A paused song doesn't count as idle. Change the timeout (0-120 minutes, or 0 to stay until told to leave) under Idle_timeout in the Music page's Configuration form. Leaving is recorded in the SYSLOG feed.
+
+### Fixed
+
+- **The dashboard logged you out every few minutes.** Every 5 minutes it re-checks your server permissions with Discord, and each open page sent several of those checks at once. Discord rate-limited the extras, and the dashboard treated the rate limit as a revoked login. Now only one check runs per login at a time. A login only ends if Discord actually rejects it; if Discord is busy or unreachable, the dashboard keeps your current permissions and tries again 30 seconds later.
+- Logging out while one of those checks was in progress could cause a server error.
+
+### Upgrading
+
+- Database migration `0007` runs automatically on startup and sets every server's idle timeout to 5 minutes. No new environment variables.
+
 ## [1.4.0] - 2026-09-24
 
 A redesign of the whole dashboard, plus the features the new design needed.

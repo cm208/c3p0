@@ -42,6 +42,12 @@ class MusicConfigRepository(BaseRepository):
         await self.session.flush()
         return config
 
+    async def set_idle_disconnect_minutes(self, guild_id: int, minutes: int) -> MusicConfig:
+        config = await self.get_or_create(guild_id)
+        config.idle_disconnect_minutes = minutes
+        await self.session.flush()
+        return config
+
     async def set_enabled(self, guild_id: int, enabled: bool) -> MusicConfig:
         config = await self.get_or_create(guild_id)
         config.enabled = enabled

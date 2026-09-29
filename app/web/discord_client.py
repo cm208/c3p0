@@ -29,7 +29,16 @@ ADMINISTRATOR = 0x8
 
 
 class DiscordAPIError(Exception):
-    """Raised when Discord's API returns an unexpected/error response."""
+    """Raised when Discord's API returns an unexpected/error response.
+
+    `status_code` is set where a caller needs to tell "Discord rejected
+    these credentials" (400/401/403) apart from "try again later" (429,
+    5xx) - see app/web/sessions.py.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def has_manage_access(permissions: int) -> bool:
@@ -189,7 +198,10 @@ async def _post_token(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     if response.status_code != 200:
-        raise DiscordAPIError(f"Discord token endpoint returned {response.status_code}")
+        raise DiscordAPIError(
+            f"Discord token endpoint returned {response.status_code}",
+            status_code=response.status_code,
+        )
 
     payload = response.json()
     return OAuthTokens(
@@ -255,7 +267,10 @@ async def fetch_user_guilds(
         params={"with_counts": "true"} if with_counts else None,
     )
     if response.status_code != 200:
-        raise DiscordAPIError(f"Discord /users/@me/guilds returned {response.status_code}")
+        raise DiscordAPIError(
+            f"Discord /users/@me/guilds returned {response.status_code}",
+            status_code=response.status_code,
+        )
 
     return [
         DiscordUserGuild(

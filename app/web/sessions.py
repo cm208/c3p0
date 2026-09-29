@@ -14,8 +14,11 @@ web-specific plumbing the Discord bot process never calls.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import secrets
+import weakref
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -27,11 +30,40 @@ from app.web import discord_client
 from app.web.config import WebConfig
 from app.web.discord_client import DiscordUser, OAuthTokens
 
+logger = logging.getLogger(__name__)
+
 SESSION_COOKIE_NAME = "c3p0_session"
 
 # How much of a head start to give an about-to-expire access token before
 # actually needing it, so a refresh has time to complete first.
 _TOKEN_REFRESH_BUFFER = timedelta(minutes=5)
+
+# Statuses meaning Discord rejected the session's credentials themselves
+# (revoked access, invalid_grant on a refresh). Anything else - a 429 above
+# all, but also 5xx or a network error - says nothing about the session,
+# so it must not end it.
+_SESSION_FATAL_STATUSES = frozenset({400, 401, 403})
+
+# After a transient refresh failure, keep serving the old permissions cache
+# and try Discord again after this long rather than on every request.
+_TRANSIENT_RETRY_AFTER = timedelta(seconds=30)
+
+# One lock per session (keyed by token hash), so the dashboard's concurrent
+# polls (status bar, syslog, music) don't all see the same stale cache and
+# stampede /users/@me/guilds at once. That endpoint's rate limit is tight
+# enough that the losers got 429s, which used to end the session - a forced
+# re-login every time the cache went stale. Weak values: an entry lives only
+# while some request holds or awaits it. Per-process is enough since
+# c3p0-web is a single uvicorn worker.
+_session_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+
+
+def _session_lock(token_hash: str) -> asyncio.Lock:
+    lock = _session_locks.get(token_hash)
+    if lock is None:
+        lock = asyncio.Lock()
+        _session_locks[token_hash] = lock
+    return lock
 
 
 def _hash_token(raw_token: str) -> str:
@@ -94,10 +126,20 @@ class SessionService:
         if not raw_token:
             return None
 
+        token_hash = _hash_token(raw_token)
+        # Held across the DB read *and* any Discord refresh: a request that
+        # waited here opens its own scope afterwards, so it sees the cache
+        # the previous holder just committed instead of refreshing again.
+        async with _session_lock(token_hash):
+            return await self._load_locked(token_hash, http=http)
+
+    async def _load_locked(
+        self, token_hash: str, *, http: httpx.AsyncClient
+    ) -> LoadedSession | None:
         now = datetime.now(UTC)
         async with session_scope() as db:
             repo = WebSessionRepository(db)
-            record = await repo.get_by_token_hash(_hash_token(raw_token))
+            record = await repo.get_by_token_hash(token_hash)
             if record is None:
                 return None
             if _as_utc(record.expires_at) < now:
@@ -106,12 +148,8 @@ class SessionService:
 
             cache = record.guild_permissions_cache
             cached_at = record.guild_permissions_cached_at
-            stale = (
-                cache is None
-                or cached_at is None
-                or (now - _as_utc(cached_at))
-                > timedelta(seconds=self._config.guild_permissions_cache_ttl_seconds)
-            )
+            ttl = timedelta(seconds=self._config.guild_permissions_cache_ttl_seconds)
+            stale = cache is None or cached_at is None or (now - _as_utc(cached_at)) > ttl
 
             if stale:
                 access_token = record.access_token
@@ -134,11 +172,27 @@ class SessionService:
                     guilds = await discord_client.fetch_user_guilds(http, access_token)
                     cache = {str(g.id): g.permissions for g in guilds}
                     await repo.update_guild_permissions_cache(record.id, cache=cache, cached_at=now)
-                except discord_client.DiscordAPIError:
-                    # Refresh token revoked, or Discord otherwise rejected
-                    # us - the session can't be trusted any further.
-                    await repo.delete(record.id)
-                    return None
+                except (discord_client.DiscordAPIError, httpx.HTTPError) as exc:
+                    if (
+                        isinstance(exc, discord_client.DiscordAPIError)
+                        and exc.status_code in _SESSION_FATAL_STATUSES
+                    ):
+                        # Refresh token revoked, or Discord otherwise
+                        # rejected our credentials - the session can't be
+                        # trusted any further.
+                        await repo.delete(record.id)
+                        return None
+                    # Rate-limited, Discord having a bad moment, or a
+                    # network blip: keep the session and whatever cache it
+                    # has, and try again shortly. Any token refresh that
+                    # succeeded before the failure is still committed.
+                    logger.warning("Deferring session permissions refresh: %s", exc)
+                    if cache is not None:
+                        # Backdate so the cache goes stale again after
+                        # _TRANSIENT_RETRY_AFTER, not a whole TTL from now.
+                        await repo.update_guild_permissions_cache(
+                            record.id, cache=cache, cached_at=now - ttl + _TRANSIENT_RETRY_AFTER
+                        )
 
             await repo.touch(record.id, now=now)
 
@@ -172,8 +226,11 @@ class SessionService:
     async def delete(self, raw_token: str | None) -> None:
         if not raw_token:
             return
-        async with session_scope() as db:
+        token_hash = _hash_token(raw_token)
+        # Same lock as load(), so logging out mid-refresh can't delete the
+        # row out from under an in-flight UPDATE (a StaleDataError 500).
+        async with _session_lock(token_hash), session_scope() as db:
             repo = WebSessionRepository(db)
-            record = await repo.get_by_token_hash(_hash_token(raw_token))
+            record = await repo.get_by_token_hash(token_hash)
             if record is not None:
                 await repo.delete(record.id)
